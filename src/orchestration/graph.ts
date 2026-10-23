@@ -28,6 +28,8 @@ import {
   ReportSchema,
   type RunRequest,
   RunRequestSchema,
+  TOOL_KINDS,
+  type ToolName,
   type TargetConfig,
   type TargetId,
   type TraceContext,
@@ -113,7 +115,7 @@ export async function executeRunGraph(
     target,
   });
 
-  const traceId = generateTraceId();
+  const traceId = options.traceContext?.traceId || generateTraceId();
   const logDir = options.traceContext?.logDir || path.resolve(process.cwd(), "logs");
   const canaryKey = options.traceContext?.canaryKey || "dev_canary_key";
   const traceCtx: TraceContext = { traceId, logDir, canaryKey };
@@ -461,18 +463,25 @@ export async function executeRunGraph(
         if (request.memory_mode !== "off") {
           try {
             const memId = `mem_${crypto.randomUUID().slice(0, 8)}`;
+            const toolKind = diagnosis.implicated_tool
+              ? (TOOL_KINDS[diagnosis.implicated_tool as ToolName] || null)
+              : null;
             await memory.store(
               MemoryRecordSchema.parse({
                 mem_id: memId,
+                created_run: traceId,
                 source_target: state.target_id,
-                root_cause_code: diagnosis.root_cause_code,
                 attack_class: activeAttack.class,
-                tool_kind: diagnosis.implicated_tool || "general",
+                hit_types: activeFinding.hit_types,
+                root_cause_code: diagnosis.root_cause_code,
+                implicated_tool_kind: toolKind,
                 fix_types: fix.fix_types,
-                rationale_summary: fix.rationale,
-                ops: fix.ops,
+                fix_ops: fix.ops,
+                rationale: fix.rationale,
                 outcome: "verified",
                 trust: 0.5,
+                reuse_log: [],
+                created_at: new Date().toISOString(),
               })
             );
             if (fix.used_mem_id) {
