@@ -527,5 +527,37 @@ describe("Task T-D6 & T-D7: H-MEM Memory Adapter & Fix Library", () => {
       expect(results).toEqual([]);
       expect(degradedReason).toBe("memory_unavailable");
     });
+
+    it("listRecords returns sorted records and reset clears store and persistent file", async () => {
+      const memory = new HMemFixMemory({
+        mode: "warm",
+        persistDir: TEST_MEMORY_DIR,
+        logDir: TEST_LOG_DIR,
+        traceId: TEST_TRACE_ID,
+      });
+
+      await memory.store(
+        makeSampleRecord({
+          mem_id: "mem_11111111",
+          created_at: "2026-10-24T10:00:00.000Z",
+        })
+      );
+      await memory.store(
+        makeSampleRecord({
+          mem_id: "mem_22222222",
+          created_at: "2026-10-24T11:00:00.000Z",
+        })
+      );
+
+      const list = memory.listRecords();
+      expect(list.length).toBe(2);
+      expect(list[0].mem_id).toBe("mem_22222222"); // newest first
+      expect(list[1].mem_id).toBe("mem_11111111");
+
+      memory.reset();
+      expect(memory.size).toBe(0);
+      expect(memory.listRecords()).toEqual([]);
+      expect(fs.existsSync(path.join(TEST_MEMORY_DIR, "records.json"))).toBe(false);
+    });
   });
 });

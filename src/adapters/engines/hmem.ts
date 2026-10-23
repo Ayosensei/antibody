@@ -420,4 +420,30 @@ export class HMemFixMemory implements FixMemory {
   getRecord(memId: string): MemoryRecord | undefined {
     return this.records.get(memId);
   }
+
+  /**
+   * Helper for GET /memory: returns all stored records sorted by created_at descending.
+   */
+  listRecords(): MemoryRecord[] {
+    return Array.from(this.records.values())
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))
+      .map((r) => structuredClone(r));
+  }
+
+  /**
+   * Helper for POST /memory/reset: clears in-memory records and wipes persistent files if in warm mode.
+   */
+  reset(): void {
+    this.records.clear();
+    this.memIdToHmemId.clear();
+    this.hmemIdToMemId.clear();
+    this.supersededByMemId.clear();
+    if (this.recordsFile && fs.existsSync(this.recordsFile)) {
+      try {
+        fs.unlinkSync(this.recordsFile);
+      } catch {
+        // ignore
+      }
+    }
+  }
 }
