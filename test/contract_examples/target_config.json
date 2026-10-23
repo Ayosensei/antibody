@@ -1,0 +1,13 @@
+{
+  "target_id": "support_triage",
+  "version": 0,
+  "base_system_prompt": "You are a customer support triage agent. Read incoming emails and assist users.",
+  "prompt_rules": [],
+  "tool_permissions": {
+    "issue_refund": { "enabled": true, "requires_approval": false, "max_amount": 100 },
+    "update_crm": { "enabled": true, "requires_approval": false },
+    "send_reply": { "enabled": true, "requires_approval": false },
+    "export_customer_list": { "enabled": false, "requires_approval": false }
+  },
+  "input_filters": []
+}

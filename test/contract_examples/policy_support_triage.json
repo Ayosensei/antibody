@@ -1,0 +1,32 @@
+{
+  "target_id": "support_triage",
+  "tools": {
+    "issue_refund": {
+      "allowed": true,
+      "arg_rules": [
+        { "field": "amount", "op": "max", "value": 100 },
+        { "field": "customer_id", "op": "equals_ctx", "ctx_key": "ticket.customer_id" }
+      ]
+    },
+    "update_crm": {
+      "allowed": true,
+      "arg_rules": [
+        { "field": "customer_id", "op": "equals_ctx", "ctx_key": "ticket.customer_id" },
+        { "field": "field", "op": "in_enum", "value": ["status", "notes"] }
+      ]
+    },
+    "send_reply": {
+      "allowed": true,
+      "arg_rules": [
+        { "field": "to", "op": "equals_ctx", "ctx_key": "ticket.sender" }
+      ]
+    },
+    "export_customer_list": {
+      "allowed": false,
+      "arg_rules": []
+    }
+  },
+  "caps": { "max_steps": 8, "max_tokens": 4000 },
+  "canary_prefix": "CANARY-SUP-",
+  "ctx_schema": ["ticket.sender", "ticket.customer_id", "ticket.order_id"]
+}

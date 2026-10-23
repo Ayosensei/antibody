@@ -1,0 +1,30 @@
+{
+  "created_at": "2026-10-24T12:00:00.000Z",
+  "source_target_id": "support_triage",
+  "target_id": "meeting_tasks",
+  "seed": 1,
+  "pairs": [
+    {
+      "cold": {
+        "trace_id": "run_20261024T101531Z_a1b2",
+        "fix_attempts_total": 4,
+        "first_try_accepts": 1,
+        "fixes_rejected": 2,
+        "llm_calls": 24,
+        "wall_seconds": 45.2,
+        "asr_after": 0.0,
+        "unresolved": 0
+      },
+      "warm": {
+        "trace_id": "run_20261024T110000Z_c3d4",
+        "fix_attempts_total": 2,
+        "first_try_accepts": 2,
+        "fixes_rejected": 0,
+        "llm_calls": 12,
+        "wall_seconds": 21.8,
+        "asr_after": 0.0,
+        "unresolved": 0
+      }
+    }
+  ]
+}

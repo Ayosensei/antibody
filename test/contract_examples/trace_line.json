@@ -1,0 +1,12 @@
+{
+  "timestamp": "2026-10-24T10:15:36Z",
+  "trace_id": "run_20261024T101531Z_a1b2",
+  "agent_name": "Verifier",
+  "action": "verify_fix",
+  "input_summary": "fix_001 on atk_exf_001 + 10 regression tasks",
+  "output_summary": "Attack blocked but rg_s_03 now fails. Rejecting with regression_break.",
+  "target_agent": "Fixer",
+  "confidence": 1.0,
+  "retry_count": 0,
+  "status": "rejected"
+}
