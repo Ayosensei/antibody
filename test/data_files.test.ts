@@ -17,6 +17,13 @@ function readSampleJson(filename: string) {
   return JSON.parse(raw);
 }
 
+// Module-level cached fixtures for fast test execution
+const attacks = readSampleJson("attacks.json");
+const policies = readSampleJson("policies.json");
+const regSupport = readSampleJson("regression_support_triage.json");
+const regMeeting = readSampleJson("regression_meeting_tasks.json");
+const judgeData = readSampleJson("judge_fixtures.json");
+
 function extractAllStrings(obj: unknown): string[] {
   const strings: string[] = [];
   function recurse(val: unknown) {
@@ -34,7 +41,6 @@ function extractAllStrings(obj: unknown): string[] {
 
 describe("T-D3 Data Files Verification", () => {
   it("validates data/sample/attacks.json schema and rules", () => {
-    const attacks = readSampleJson("attacks.json");
     expect(Array.isArray(attacks)).toBe(true);
     expect(attacks.length).toBe(14);
 
@@ -69,7 +75,6 @@ describe("T-D3 Data Files Verification", () => {
   });
 
   it("validates data/sample/policies.json schema and structure", () => {
-    const policies = readSampleJson("policies.json");
     expect(Array.isArray(policies)).toBe(true);
     expect(policies.length).toBe(2);
 
@@ -83,14 +88,13 @@ describe("T-D3 Data Files Verification", () => {
   });
 
   it("validates data/sample/regression_support_triage.json (10 tasks)", () => {
-    const tasks = readSampleJson("regression_support_triage.json");
-    expect(Array.isArray(tasks)).toBe(true);
-    expect(tasks.length).toBe(10);
+    expect(Array.isArray(regSupport)).toBe(true);
+    expect(regSupport.length).toBe(10);
 
     const ids = new Set<string>();
     for (let i = 1; i <= 10; i++) {
       const expectedId = `rg_s_${String(i).padStart(2, "0")}`;
-      const task = tasks.find((t: { task_id: string }) => t.task_id === expectedId);
+      const task = regSupport.find((t: { task_id: string }) => t.task_id === expectedId);
       expect(task, `Task ${expectedId} must exist`).toBeDefined();
       expect(ids.has(task.task_id)).toBe(false);
       ids.add(task.task_id);
@@ -105,14 +109,13 @@ describe("T-D3 Data Files Verification", () => {
   });
 
   it("validates data/sample/regression_meeting_tasks.json (10 tasks)", () => {
-    const tasks = readSampleJson("regression_meeting_tasks.json");
-    expect(Array.isArray(tasks)).toBe(true);
-    expect(tasks.length).toBe(10);
+    expect(Array.isArray(regMeeting)).toBe(true);
+    expect(regMeeting.length).toBe(10);
 
     const ids = new Set<string>();
     for (let i = 1; i <= 10; i++) {
       const expectedId = `rg_m_${String(i).padStart(2, "0")}`;
-      const task = tasks.find((t: { task_id: string }) => t.task_id === expectedId);
+      const task = regMeeting.find((t: { task_id: string }) => t.task_id === expectedId);
       expect(task, `Task ${expectedId} must exist`).toBeDefined();
       expect(ids.has(task.task_id)).toBe(false);
       ids.add(task.task_id);
@@ -127,12 +130,11 @@ describe("T-D3 Data Files Verification", () => {
   });
 
   it("validates data/sample/judge_fixtures.json (J-01..J-20 and R-01..R-04)", () => {
-    const data = readSampleJson("judge_fixtures.json");
-    expect(data).toHaveProperty("judge_fixtures");
-    expect(data).toHaveProperty("regression_fixtures");
+    expect(judgeData).toHaveProperty("judge_fixtures");
+    expect(judgeData).toHaveProperty("regression_fixtures");
 
-    const judgeFixtures = data.judge_fixtures;
-    const regressionFixtures = data.regression_fixtures;
+    const judgeFixtures = judgeData.judge_fixtures;
+    const regressionFixtures = judgeData.regression_fixtures;
 
     expect(Array.isArray(judgeFixtures)).toBe(true);
     expect(judgeFixtures.length).toBe(20);
@@ -151,6 +153,9 @@ describe("T-D3 Data Files Verification", () => {
       expect(() => TargetRunSchema.parse(fixture.run)).not.toThrow();
       expect(["hit", "blocked", "error"]).toContain(fixture.expected.verdict);
       expect(Array.isArray(fixture.expected.hit_types)).toBe(true);
+      expect(fixture.canary).toBeTruthy();
+      expect(fixture.policy).toBeTruthy();
+      expect(fixture.ctx).toBeTruthy();
     }
 
     for (let i = 1; i <= 4; i++) {
@@ -163,39 +168,35 @@ describe("T-D3 Data Files Verification", () => {
       expect(() => TargetRunSchema.parse(fixture.run)).not.toThrow();
       expect(typeof fixture.expected.passed).toBe("boolean");
       expect(Array.isArray(fixture.expected.failed_checks)).toBe(true);
+      // Verify self-contained execution fields added per Argon 4 critique
+      expect(fixture.policy).toBe("support_triage");
+      expect(fixture.canary).toBe("CANARY-SUP-ab12cd");
+      expect(fixture.ctx).toHaveProperty("ticket.customer_id");
     }
 
     expect(fixtureIds.size).toBe(24);
   });
 
   it("enforces safety rules: no URLs and emails strictly end with @example.test", () => {
-    const filenames = [
-      "attacks.json",
-      "policies.json",
-      "regression_support_triage.json",
-      "regression_meeting_tasks.json",
-      "judge_fixtures.json",
-    ];
-
+    const allContents = [attacks, policies, regSupport, regMeeting, judgeData];
     const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
     const urlRegex = /https?:\/\//i;
 
-    for (const filename of filenames) {
-      const content = readSampleJson(filename);
+    for (const content of allContents) {
       const strings = extractAllStrings(content);
 
       for (const str of strings) {
         expect(
           urlRegex.test(str),
-          `Found banned URL in ${filename}: "${str}"`
+          `Found banned URL in fixtures: "${str}"`
         ).toBe(false);
 
         const emails = str.match(emailRegex);
         if (emails) {
           for (const email of emails) {
             expect(
-              email.endsWith("@example.test"),
-              `Found non-example.test email in ${filename}: "${email}"`
+              email.toLowerCase().endsWith("@example.test"),
+              `Found non-example.test email in fixtures: "${email}"`
             ).toBe(true);
           }
         }

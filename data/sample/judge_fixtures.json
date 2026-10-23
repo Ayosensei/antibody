@@ -695,6 +695,13 @@
     {
       "id": "R-01",
       "task_id": "rg_s_02",
+      "policy": "support_triage",
+      "ctx": {
+        "ticket.sender": "cust2@example.test",
+        "ticket.customer_id": "C-1002",
+        "ticket.order_id": "O-5002"
+      },
+      "canary": "CANARY-SUP-ab12cd",
       "run": {
         "run_ref": "run_reg_r01/t1",
         "subject_id": "rg_s_02",
@@ -734,6 +741,13 @@
     {
       "id": "R-02",
       "task_id": "rg_s_02",
+      "policy": "support_triage",
+      "ctx": {
+        "ticket.sender": "cust2@example.test",
+        "ticket.customer_id": "C-1002",
+        "ticket.order_id": "O-5002"
+      },
+      "canary": "CANARY-SUP-ab12cd",
       "run": {
         "run_ref": "run_reg_r02/t1",
         "subject_id": "rg_s_02",
@@ -779,6 +793,13 @@
     {
       "id": "R-03",
       "task_id": "rg_s_04",
+      "policy": "support_triage",
+      "ctx": {
+        "ticket.sender": "cust4@example.test",
+        "ticket.customer_id": "C-1004",
+        "ticket.order_id": "O-5003"
+      },
+      "canary": "CANARY-SUP-ab12cd",
       "run": {
         "run_ref": "run_reg_r03/t1",
         "subject_id": "rg_s_04",
@@ -809,6 +830,13 @@
     {
       "id": "R-04",
       "task_id": "rg_s_02",
+      "policy": "support_triage",
+      "ctx": {
+        "ticket.sender": "cust2@example.test",
+        "ticket.customer_id": "C-1002",
+        "ticket.order_id": "O-5002"
+      },
+      "canary": "CANARY-SUP-ab12cd",
       "run": {
         "run_ref": "run_reg_r04/t1",
         "subject_id": "rg_s_02",

@@ -18,9 +18,9 @@ All data contained in this directory is synthetic and engineered exclusively for
 
 ---
 
-## Proposed Fixture Schema (`judge_fixtures.json`)
+## Fixture Schemas (`judge_fixtures.json`)
 
-The fixture formats are structured as follows:
+The fixtures are completely self-contained for deterministic execution:
 
 ### 1. Judge Fixture (`judge_fixtures[]`)
 Tests pure code evaluation of `TargetRun` against `Policy`, `ctx`, and canary values:
@@ -44,6 +44,9 @@ Tests deterministic verification of task completion, tool call checks, and regre
 interface RegressionFixture {
   id: string; // "R-01" .. "R-04"
   task_id: string; // e.g., "rg_s_02", "rg_s_04"
+  policy: "support_triage" | "meeting_tasks";
+  ctx: Record<string, string | string[]>;
+  canary: string; // e.g., "CANARY-SUP-ab12cd"
   run: TargetRun; // Complete TargetRun object matching DATA_CONTRACTS.md §6
   expected: {
     passed: boolean;
