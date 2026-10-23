@@ -122,6 +122,77 @@ describe("Task T-D6 & T-D7: H-MEM Memory Adapter & Fix Library", () => {
       const retrieved = await memory.retrieve(query);
       expect(retrieved.length).toBe(0);
     });
+
+    it("supports optional k parameter to override query.k", async () => {
+      const memory = new HMemFixMemory({
+        mode: "warm",
+        persistDir: TEST_MEMORY_DIR,
+        logDir: TEST_LOG_DIR,
+        traceId: TEST_TRACE_ID,
+      });
+
+      await memory.store(makeSampleRecord({ mem_id: "mem_aaaa0001", trust: 0.8 }));
+      await memory.store(makeSampleRecord({ mem_id: "mem_aaaa0002", trust: 0.7 }));
+
+      const query: MemoryQuery = {
+        root_cause_code: "FT-01",
+        attack_class: "injection_override",
+        hit_types: ["disallowed_tool_call"],
+        tool_kind: "outbound_message",
+        k: 10,
+        min_trust: 0.1,
+      };
+
+      // Calling retrieve with optional 2nd argument k=1 overrides query.k=10
+      const retrieved = await memory.retrieve(query, 1);
+      expect(retrieved.length).toBe(1);
+      expect(retrieved[0].mem_id).toBe("mem_aaaa0001");
+    });
+
+    it("guarantees trust strictly dominates secondary tie-breakers per AGENT_SPEC 6.4", async () => {
+      const memory = new HMemFixMemory({
+        mode: "warm",
+        persistDir: TEST_MEMORY_DIR,
+        logDir: TEST_LOG_DIR,
+        traceId: TEST_TRACE_ID,
+      });
+
+      // Rec 1: High trust (0.95), different attack_class ("canary_probe")
+      const rec1 = makeSampleRecord({
+        mem_id: "mem_95959595",
+        root_cause_code: "FT-01",
+        implicated_tool_kind: "outbound_message",
+        attack_class: "canary_probe",
+        trust: 0.95,
+      });
+
+      // Rec 2: Low trust (0.35), matching attack_class ("injection_override")
+      const rec2 = makeSampleRecord({
+        mem_id: "mem_35353535",
+        root_cause_code: "FT-01",
+        implicated_tool_kind: "outbound_message",
+        attack_class: "injection_override",
+        trust: 0.35,
+      });
+
+      await memory.store(rec1);
+      await memory.store(rec2);
+
+      const query: MemoryQuery = {
+        root_cause_code: "FT-01",
+        attack_class: "injection_override",
+        hit_types: ["disallowed_tool_call"],
+        tool_kind: "outbound_message",
+        k: 2,
+        min_trust: 0.1,
+      };
+
+      const results = await memory.retrieve(query);
+      // Even though rec2 matches attack_class, rec1 must strictly rank first due to high trust
+      expect(results.length).toBe(2);
+      expect(results[0].mem_id).toBe("mem_95959595");
+      expect(results[1].mem_id).toBe("mem_35353535");
+    });
   });
 
   // ==========================================================================
@@ -343,7 +414,7 @@ describe("Task T-D6 & T-D7: H-MEM Memory Adapter & Fix Library", () => {
       await memory.store(fixNew);
 
       // Conflict should have triggered: fixNew wins with trust 0.85; fixOld was penalized
-      const oldRec = memory.getRecord("fixOld" as any) ?? memory.getRecord("mem_11112222");
+      const oldRec = memory.getRecord("mem_11112222");
       expect(oldRec).toBeDefined();
       expect(oldRec!.trust).toBeLessThanOrEqual(0.4);
 
@@ -430,7 +501,7 @@ describe("Task T-D6 & T-D7: H-MEM Memory Adapter & Fix Library", () => {
         },
       });
 
-      expect(degradedReason).toBe("memory_corrupt");
+      expect(degradedReason).toBe("memory_unavailable");
       expect(memory.size).toBe(0);
     });
 

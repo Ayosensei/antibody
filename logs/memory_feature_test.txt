@@ -1,10 +1,10 @@
 
  RUN  v2.1.9 C:/Users/USER/Documents/CODE/HACKATHONS/GEN AI 2/antibody
 
- ✓ test/memory.test.ts (11 tests) 79ms
+ ✓ test/memory.test.ts (13 tests) 91ms
 
  Test Files  1 passed (1)
-      Tests  11 passed (11)
-   Start at  18:59:07
-   Duration  707ms (transform 151ms, setup 0ms, collect 223ms, tests 79ms, environment 0ms, prepare 135ms)
+      Tests  13 passed (13)
+   Start at  19:17:24
+   Duration  695ms (transform 152ms, setup 0ms, collect 226ms, tests 91ms, environment 0ms, prepare 115ms)
 

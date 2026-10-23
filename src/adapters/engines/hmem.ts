@@ -13,7 +13,7 @@ import { HMEM } from "./hmem-ref/index";
 import type { MemoryRecord as HMemRecord } from "./hmem-ref/types";
 
 export interface FixMemory {
-  retrieve(query: MemoryQuery): Promise<MemoryRecord[]>;
+  retrieve(query: MemoryQuery, k?: number): Promise<MemoryRecord[]>;
   store(record: MemoryRecord): Promise<void>;
   updateTrust(
     memId: string,
@@ -31,7 +31,7 @@ export interface HMemOptions {
   logDir?: string;
   traceId?: string;
   clock?: () => number;
-  onDegraded?: (reason: string) => void;
+  onDegraded?: (reason: "memory_unavailable") => void;
 }
 
 const DEFAULT_TRACE_ID = "run_20261024T000000Z_0000";
@@ -40,6 +40,7 @@ interface PersistedRecordsData {
   version: number;
   records: MemoryRecord[];
   idMap: Record<string, string>; // mem_id -> hmem_id
+  supersededMap?: Record<string, string>; // mem_id -> winning mem_id
 }
 
 export class HMemFixMemory implements FixMemory {
@@ -50,11 +51,12 @@ export class HMemFixMemory implements FixMemory {
   private readonly logDir?: string;
   private readonly traceId: string;
   private readonly clock: () => number;
-  private readonly onDegraded?: (reason: string) => void;
+  private readonly onDegraded?: (reason: "memory_unavailable") => void;
 
   private records = new Map<string, MemoryRecord>();
   private memIdToHmemId = new Map<string, string>();
   private hmemIdToMemId = new Map<string, string>();
+  private supersededByMemId = new Map<string, string>();
 
   constructor(opts: HMemOptions = {}) {
     this.mode = opts.mode ?? "warm";
@@ -109,9 +111,20 @@ export class HMemFixMemory implements FixMemory {
           this.hmemIdToMemId.set(hmemId, memId);
         }
       }
+      if (parsed.supersededMap) {
+        for (const [loserMemId, winnerMemId] of Object.entries(parsed.supersededMap)) {
+          this.supersededByMemId.set(loserMemId, winnerMemId);
+          const loserHmemId = this.memIdToHmemId.get(loserMemId);
+          const winnerHmemId = this.memIdToHmemId.get(winnerMemId);
+          const loserHmemRec = loserHmemId ? this.hmem.store.get(loserHmemId) : undefined;
+          if (loserHmemRec && winnerHmemId) {
+            loserHmemRec.supersededBy = winnerHmemId;
+          }
+        }
+      }
     } catch {
-      // Corrupt records file fallback: start with empty map and mark degraded
-      this.onDegraded?.("memory_corrupt");
+      // Corrupt records file fallback: start with empty map and mark canonical degraded code
+      this.onDegraded?.("memory_unavailable");
     }
   }
 
@@ -122,10 +135,11 @@ export class HMemFixMemory implements FixMemory {
         version: 1,
         records: Array.from(this.records.values()),
         idMap: Object.fromEntries(this.memIdToHmemId.entries()),
+        supersededMap: Object.fromEntries(this.supersededByMemId.entries()),
       };
       fs.writeFileSync(this.recordsFile, JSON.stringify(payload, null, 2) + "\n", "utf-8");
     } catch (err) {
-      this.handleError("persistRecords", err as Error);
+      this.handleError("store_memory", err as Error);
     }
   }
 
@@ -154,11 +168,14 @@ export class HMemFixMemory implements FixMemory {
     }
   }
 
-  private handleError(operation: string, err: Error): void {
+  private handleError(
+    action: "retrieve_memory" | "store_memory" | "update_trust",
+    err: Error
+  ): void {
     this.onDegraded?.("memory_unavailable");
     this.emitTrace(
-      operation as "retrieve_memory" | "store_memory" | "update_trust",
-      `Operation: ${operation}`,
+      action,
+      `Operation: ${action}`,
       `Memory adapter error: ${err.message}. Status degraded: memory_unavailable.`,
       "fallback"
     );
@@ -171,50 +188,20 @@ export class HMemFixMemory implements FixMemory {
 
     try {
       const valid = MemoryRecordSchema.parse(record);
+      const newOpsJson = JSON.stringify(valid.fix_ops);
 
       // Check conflict case (SPONSOR_METERLESS.md §A5 item 4):
-      // When a new record has the same (root_cause_code, attack_class, implicated_tool_kind)
-      // as an existing one but different fix_ops.
+      // Same (root_cause_code, attack_class, implicated_tool_kind) but different fix_ops.
       const conflictingRecords = Array.from(this.records.values()).filter(
         (r) =>
           r.root_cause_code === valid.root_cause_code &&
           r.attack_class === valid.attack_class &&
           r.implicated_tool_kind === valid.implicated_tool_kind &&
           r.mem_id !== valid.mem_id &&
-          JSON.stringify(r.fix_ops) !== JSON.stringify(valid.fix_ops)
+          JSON.stringify(r.fix_ops) !== newOpsJson
       );
 
-      let supersededMemId: string | undefined;
-      let conflictResolvedReason = "";
-
-      for (const existingConflict of conflictingRecords) {
-        const existingHmemId = this.memIdToHmemId.get(existingConflict.mem_id);
-        const existingHmemRecord = existingHmemId ? this.hmem.store.get(existingHmemId) : undefined;
-
-        // Auto-resolve decision: prefer higher trust, then verified outcome, then newer timestamp
-        const preferNew =
-          valid.trust > existingConflict.trust ||
-          (valid.trust === existingConflict.trust &&
-            valid.outcome === "verified" &&
-            existingConflict.outcome !== "verified");
-
-        if (preferNew && existingHmemRecord && existingHmemId) {
-          supersededMemId = existingConflict.mem_id;
-          conflictResolvedReason = `Newer fix ${valid.mem_id} has higher trust (${valid.trust} vs ${existingConflict.trust})`;
-          // In H-MEM: losing record is marked supersededBy, never deleted
-          existingConflict.trust = Math.max(0.0, Number((existingConflict.trust - 0.2).toFixed(4)));
-          this.hmem.ledger.log(existingHmemId, "conflict_resolved", "antibody:fix_memory", {
-            details: {
-              winner: valid.mem_id,
-              reason: conflictResolvedReason,
-            },
-          });
-        } else if (!preferNew) {
-          conflictResolvedReason = `Existing fix ${existingConflict.mem_id} retained higher trust (${existingConflict.trust} vs ${valid.trust})`;
-        }
-      }
-
-      // Add to H-MEM store
+      // Add new record to H-MEM store first so we have its H-MEM id
       const hmemContent = `[${valid.root_cause_code}] [${valid.attack_class}] [${valid.implicated_tool_kind ?? "any"}] ${valid.rationale}`;
       const hmemRec: HMemRecord = this.hmem.add({
         content: hmemContent,
@@ -225,11 +212,41 @@ export class HMemFixMemory implements FixMemory {
         type: "factual",
       });
 
-      if (supersededMemId) {
-        const existingHmemId = this.memIdToHmemId.get(supersededMemId);
-        const existingHmemRec = existingHmemId ? this.hmem.store.get(existingHmemId) : undefined;
-        if (existingHmemRec) {
-          existingHmemRec.supersededBy = hmemRec.id;
+      const conflictReasons: string[] = [];
+
+      for (const existingConflict of conflictingRecords) {
+        const existingHmemId = this.memIdToHmemId.get(existingConflict.mem_id);
+        const existingHmemRecord = existingHmemId ? this.hmem.store.get(existingHmemId) : undefined;
+
+        const preferNew =
+          valid.trust > existingConflict.trust ||
+          (valid.trust === existingConflict.trust &&
+            valid.outcome === "verified" &&
+            existingConflict.outcome !== "verified");
+
+        if (preferNew) {
+          const reason = `Newer fix ${valid.mem_id} superseded ${existingConflict.mem_id} (trust ${valid.trust} vs ${existingConflict.trust})`;
+          conflictReasons.push(reason);
+          existingConflict.trust = Math.max(0.0, Number((existingConflict.trust - 0.2).toFixed(4)));
+          this.supersededByMemId.set(existingConflict.mem_id, valid.mem_id);
+
+          if (existingHmemRecord && existingHmemId) {
+            existingHmemRecord.supersededBy = hmemRec.id;
+            this.hmem.ledger.log(existingHmemId, "conflict_resolved", "antibody:fix_memory", {
+              details: { winner: valid.mem_id, loser: existingConflict.mem_id, reason },
+            });
+          }
+        } else {
+          const reason = `Existing fix ${existingConflict.mem_id} retained over ${valid.mem_id} (trust ${existingConflict.trust} vs ${valid.trust})`;
+          conflictReasons.push(reason);
+          this.supersededByMemId.set(valid.mem_id, existingConflict.mem_id);
+
+          if (existingHmemId) {
+            hmemRec.supersededBy = existingHmemId;
+            this.hmem.ledger.log(hmemRec.id, "conflict_resolved", "antibody:fix_memory", {
+              details: { winner: existingConflict.mem_id, loser: valid.mem_id, reason },
+            });
+          }
         }
       }
 
@@ -240,7 +257,7 @@ export class HMemFixMemory implements FixMemory {
       this.persistRecords();
 
       const conflictDetail =
-        conflictingRecords.length > 0 ? ` (Conflict: ${conflictResolvedReason})` : "";
+        conflictReasons.length > 0 ? ` (Conflict: ${conflictReasons.join("; ")})` : "";
       this.emitTrace(
         "store_memory",
         `Storing fix ${valid.mem_id}: ${valid.root_cause_code}/${valid.attack_class} on ${valid.source_target}`,
@@ -251,7 +268,7 @@ export class HMemFixMemory implements FixMemory {
     }
   }
 
-  async retrieve(query: MemoryQuery): Promise<MemoryRecord[]> {
+  async retrieve(query: MemoryQuery, k?: number): Promise<MemoryRecord[]> {
     if (this.mode === "off") {
       this.emitTrace(
         "retrieve_memory",
@@ -263,10 +280,14 @@ export class HMemFixMemory implements FixMemory {
 
     try {
       const validQuery = MemoryQuerySchema.parse(query);
+      const topK = k !== undefined && k > 0 ? Math.floor(k) : validQuery.k;
 
-      // Score and rank candidates per AGENT_SPEC.md §6.4:
-      // Exact root_cause_code match first, then tool_kind match, then trust descending.
-      // Filter out records below min_trust.
+      // Score and rank candidates strictly per AGENT_SPEC.md §6.4:
+      // 1. Exact root_cause_code match (+1000)
+      // 2. Non-superseded (0 vs -500)
+      // 3. Exact tool_kind match (+100)
+      // 4. Trust descending (record.trust * 50 -> 0..50)
+      // 5. Tie-breakers: attack_class (+0.4), hit_types (+0.1 each), H-MEM scoreOne (+0.05)
       const queryText = `${validQuery.root_cause_code} ${validQuery.attack_class} ${validQuery.tool_kind ?? ""}`;
       const candidates: { record: MemoryRecord; rankScore: number }[] = [];
 
@@ -276,45 +297,40 @@ export class HMemFixMemory implements FixMemory {
         }
 
         let score = 0;
-        // Exact root_cause_code match
         if (record.root_cause_code === validQuery.root_cause_code) {
           score += 1000;
         }
-        // tool_kind match
         if (
           validQuery.tool_kind !== null &&
           record.implicated_tool_kind === validQuery.tool_kind
         ) {
           score += 100;
         }
-        // attack_class match
+
+        // Trust strictly dominates secondary tie-breakers
+        score += record.trust * 50;
+
+        // Secondary tie-breakers when trust is equal
         if (record.attack_class === validQuery.attack_class) {
-          score += 50;
+          score += 0.4;
         }
-        // hit_types match count
         const commonHits = record.hit_types.filter((h) => validQuery.hit_types.includes(h));
-        score += commonHits.length * 10;
+        score += commonHits.length * 0.1;
 
-        // Base trust weight
-        score += record.trust * 20;
-
-        // In H-MEM: check if superseded
         const hmemId = this.memIdToHmemId.get(record.mem_id);
         const hmemRec = hmemId ? this.hmem.store.get(hmemId) : undefined;
-        if (hmemRec?.supersededBy) {
-          score -= 500; // Penalized in ranking
+        if (hmemRec?.supersededBy || this.supersededByMemId.has(record.mem_id)) {
+          score -= 500;
         }
 
-        // Add subtle H-MEM hybrid score contribution
         if (hmemRec) {
           const hmemSim = this.hmem.retrieval.scoreOne(hmemRec, queryText);
-          score += hmemSim * 5;
+          score += hmemSim * 0.05;
         }
 
         candidates.push({ record, rankScore: score });
       }
 
-      // Sort descending by rankScore, then by trust, then by mem_id
       candidates.sort(
         (a, b) =>
           b.rankScore - a.rankScore ||
@@ -322,9 +338,8 @@ export class HMemFixMemory implements FixMemory {
           a.record.mem_id.localeCompare(b.record.mem_id)
       );
 
-      const top = candidates.slice(0, validQuery.k).map((c) => c.record);
+      const top = candidates.slice(0, topK).map((c) => structuredClone(c.record));
 
-      // Record access in H-MEM
       for (const rec of top) {
         const hmemId = this.memIdToHmemId.get(rec.mem_id);
         if (hmemId) {
@@ -338,7 +353,7 @@ export class HMemFixMemory implements FixMemory {
       this.emitTrace(
         "retrieve_memory",
         `Query root_cause: ${validQuery.root_cause_code}, class: ${validQuery.attack_class}, tool_kind: ${validQuery.tool_kind ?? "any"}, min_trust: ${validQuery.min_trust}`,
-        `Retrieved ${top.length} fix memories (k=${validQuery.k}): [${top.map((t) => t.mem_id).join(", ")}]`
+        `Retrieved ${top.length} fix memories (k=${topK}): [${top.map((t) => t.mem_id).join(", ")}]`
       );
 
       return top;
@@ -365,23 +380,18 @@ export class HMemFixMemory implements FixMemory {
       }
 
       const prevTrust = record.trust;
-      // Trust rules (AGENT_SPEC.md §6.4):
-      // Adapted fix accepted: trust +0.2 (cap 1.0)
-      // Adapted fix rejected: trust -0.3 (floor 0.0)
       if (result === "success") {
         record.trust = Math.min(1.0, Number((record.trust + 0.2).toFixed(4)));
       } else {
         record.trust = Math.max(0.0, Number((record.trust - 0.3).toFixed(4)));
       }
 
-      // Append to reuse_log
       record.reuse_log.push({
         run: runId ?? this.traceId,
         target: target ?? record.source_target,
         result,
       });
 
-      // Update H-MEM feedback
       const hmemId = this.memIdToHmemId.get(memId);
       if (hmemId) {
         const kind = result === "success" ? "helpful" : "wrong";
@@ -403,16 +413,10 @@ export class HMemFixMemory implements FixMemory {
     }
   }
 
-  /**
-   * Helper for tests & diagnostics: get record count.
-   */
   get size(): number {
     return this.records.size;
   }
 
-  /**
-   * Helper to retrieve raw record by mem_id.
-   */
   getRecord(memId: string): MemoryRecord | undefined {
     return this.records.get(memId);
   }
