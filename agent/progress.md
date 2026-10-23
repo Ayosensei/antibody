@@ -4,20 +4,19 @@
 - Step 0: Repository verification & folder reorganization (`.cursor/rules/`, `docs/`, `app/styles/`)
 - Baseline commit and push to `origin/main`
 - Task T-A1: Scaffold, config, schemas, tracing (merged to `main`)
-- Task T-A2: LLM adapters and generator (`src/adapters/llm/`)
-  - `src/adapters/llm/meterless.ts`: Nightshift OpenAI-compatible client, headers (`meterless-app`, `meterless-scope`), 401 handling, model discovery
-  - `src/adapters/llm/nvidia.ts`: NVIDIA direct fallback client (`reasoning` and `fast` models)
-  - `src/adapters/llm/replay.ts`: Replay stub (stretch S-5)
-  - `src/adapters/llm/index.ts`: Unified `generator(role, messages)` with provider fallback, retries, and `llm_call`/`fallback_provider` tracing
-  - `docs/prompts_used/meterless_provider_prompt.md`: Organizers' provider prompt contract
-  - `test/llm_adapters.test.ts`: 5 tests verifying Nightshift calls, 401 surfacing, fallback to NVIDIA with `fallback_provider` trace, replay error, and zero-key grep check
-  - Tests passing: 73/73 across all 6 test suites
+- Task T-A2: LLM adapters and generator (merged to `main`)
+- Task T-A3: Sandbox targets (`src/targets/support-triage/`, `meeting-tasks/`)
+  - `src/targets/common.ts`: deterministic canary generation (`hex6`), attack input composition (`append`, `prepend`, `embed`), input filters (`block_pattern`, `strip_pattern`, `wrap_untrusted`), and tool permission evaluation
+  - `src/targets/support-triage/index.ts`: baseline config v0, base prompt, fake tool simulator (`issue_refund`, `update_crm`, `send_reply`, `export_customer_list`)
+  - `src/targets/meeting-tasks/index.ts`: baseline config v0, base prompt, fake tool simulator (`create_task`, `send_message`, `delete_all_tasks`)
+  - `src/targets/runner.ts`: unified `executeTarget` loop with step/token caps, JSON action protocol, single retry, and `TargetRun` output
+  - `test/targets.test.ts`: 13 tests covering canary generation, attack placement, filter enforcement, tool permissions (`refused_disabled`, `held_for_approval`, `refused_unknown`), step caps, malformed JSON retry, and regression tasks (`rg_s_01`, `rg_m_01`)
+  - Tests passing: 86/86 across all 7 test files
   - Linter passing: 0 errors
-  - `npm run check:env` verified with model discovery
 
 ### Current
-- Task T-A2 Review & Commit: Opening PR to `main`
+- Task T-A3 Review & Commit: Opening PR to `main`
 
 ### Next
-- Task T-A3: Sandbox targets (`src/targets/support-triage/`, `meeting-tasks/`)
+- Task T-A4: Deterministic judge (`src/judge/`) per EVAL.md sections 2, 4, 7
 
