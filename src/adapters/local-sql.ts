@@ -94,9 +94,11 @@ export function validatePortableSql(rawSql: string): void {
     throw new InvalidSqlError(`Statement '${ddlMatch[0].toUpperCase()}' is not allowed in portable SQL`);
   }
 
-  // 7. Check for comma joins in FROM clause (e.g. FROM table1, table2)
-  const fromMatch = strippedTrailingSemi.match(/\bFROM\s+([a-zA-Z0-9_]+(?:\s+[a-zA-Z0-9_]+)?(?:\s*,\s*[a-zA-Z0-9_]+)+)/i);
-  if (fromMatch) {
+  // 7. Check for comma joins in FROM clause (e.g. FROM table1, table2 or FROM table1 AS t1, table2 AS t2)
+  const fromClauseMatch = strippedTrailingSemi.match(
+    /\bFROM\s+([\s\S]+?)(?:\bWHERE\b|\bGROUP\s+BY\b|\bORDER\s+BY\b|\bLIMIT\b|$)/i
+  );
+  if (fromClauseMatch && fromClauseMatch[1].includes(",")) {
     throw new InvalidSqlError("Comma-separated table joins are not allowed in portable SQL");
   }
 }
@@ -303,6 +305,8 @@ export function refreshTracesFromLogs(db: Database.Database, logDir?: string): v
 }
 
 export function refreshFixesFromMemory(db: Database.Database, memoryDir?: string): void {
+  db.exec("DELETE FROM fixes");
+
   const baseMemoryDir = memoryDir ?? path.resolve(process.cwd(), "data/memory");
   if (!fs.existsSync(baseMemoryDir)) return;
 
@@ -313,20 +317,31 @@ export function refreshFixesFromMemory(db: Database.Database, memoryDir?: string
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
+  const insertRecord = (rec: Record<string, unknown>) => {
+    if (typeof rec?.mem_id !== "string") return;
+    insertFix.run(
+      rec.mem_id,
+      String(rec.source_target ?? ""),
+      String(rec.root_cause_code ?? ""),
+      String(rec.attack_class ?? ""),
+      String(rec.implicated_tool_kind ?? rec.tool_kind ?? ""),
+      Array.isArray(rec.fix_types) ? rec.fix_types.join(",") : String(rec.fix_types ?? ""),
+      String(rec.outcome ?? "verified"),
+      typeof rec.trust === "number" ? rec.trust : 0.5
+    );
+  };
+
   const insertAll = db.transaction(() => {
     for (const file of files) {
       try {
         const parsed = JSON.parse(fs.readFileSync(path.join(baseMemoryDir, file), "utf-8"));
-        insertFix.run(
-          parsed.mem_id,
-          parsed.source_target,
-          parsed.root_cause_code,
-          parsed.attack_class,
-          parsed.implicated_tool_kind ?? parsed.tool_kind ?? "",
-          Array.isArray(parsed.fix_types) ? parsed.fix_types.join(",") : parsed.fix_types ?? "",
-          parsed.outcome,
-          parsed.trust ?? 1.0
-        );
+        if (Array.isArray(parsed)) {
+          for (const item of parsed) insertRecord(item);
+        } else if (Array.isArray(parsed?.records)) {
+          for (const item of parsed.records) insertRecord(item);
+        } else if (parsed && typeof parsed === "object") {
+          insertRecord(parsed);
+        }
       } catch {
         // ignore malformed file
       }
@@ -387,7 +402,11 @@ export function runLocalSql(sql: string, opts?: RunLocalSqlOptions): SqlResult {
     }
   }
 
-  let cleanSql = sql.trim().replace(/;\s*$/, "");
+  let cleanSql = sql
+    .replace(/--.*$/gm, "")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .trim()
+    .replace(/;\s*$/, "");
   if (opts?.limit !== undefined && !/\bLIMIT\s+\d+\b/i.test(cleanSql)) {
     cleanSql += ` LIMIT ${opts.limit}`;
   }

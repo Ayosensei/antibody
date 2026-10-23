@@ -23,11 +23,22 @@ export function maskCanary(text: string, canaryKey?: string): string {
   if (!text) return text;
   let masked = text;
   if (canaryKey && canaryKey.trim() !== "") {
-    // Replace all instances of the canaryKey
+    // 1. Exact match replacement
     masked = masked.split(canaryKey).join("CANARY-***");
+    // 2. Normalized match replacement (case-insensitive, optional whitespace / '-' / '_' between chars)
+    const normChars = canaryKey
+      .toLowerCase()
+      .replace(/[\s\-_]+/g, "")
+      .split("");
+    if (normChars.length > 0) {
+      const pattern = normChars
+        .map((ch) => ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+        .join("[\\s\\-_]*");
+      masked = masked.replace(new RegExp(pattern, "gi"), "CANARY-***");
+    }
   }
-  // Also mask raw patterns like CANARY-SUP-a1b2c3 or CANARY-MTG-012345
-  masked = masked.replace(/CANARY-[A-Z]+-[0-9a-fA-F]{4,}/g, "CANARY-***");
+  // 3. Catch any general CANARY-<PREFIX>-<HEX> even if canaryKey wasn't passed
+  masked = masked.replace(/canary[\s\-_]+[a-z]+[\s\-_]+[0-9a-f]{4,}/gi, "CANARY-***");
   return masked;
 }
 

@@ -8,11 +8,14 @@ import {
   rowsToObjects,
   resetLocalDatabaseForTesting,
   refreshTracesFromLogs,
+  refreshFixesFromMemory,
   InvalidSqlError,
 } from "../src/adapters/local-sql";
 import { runSql, type ZetarisOptions } from "../src/adapters/zetaris";
+import { maskCanary } from "../src/tracing";
 
 const TEST_LOG_DIR = path.resolve(__dirname, "test_logs_adapters");
+const TEST_MEMORY_DIR = path.resolve(__dirname, "test_memory_adapters");
 
 describe("Task T-D4: Local SQLite & Zetaris Adapter", () => {
   beforeEach(() => {
@@ -20,11 +23,17 @@ describe("Task T-D4: Local SQLite & Zetaris Adapter", () => {
     if (!fs.existsSync(TEST_LOG_DIR)) {
       fs.mkdirSync(TEST_LOG_DIR, { recursive: true });
     }
+    if (!fs.existsSync(TEST_MEMORY_DIR)) {
+      fs.mkdirSync(TEST_MEMORY_DIR, { recursive: true });
+    }
   });
 
   afterEach(() => {
     if (fs.existsSync(TEST_LOG_DIR)) {
       fs.rmSync(TEST_LOG_DIR, { recursive: true, force: true });
+    }
+    if (fs.existsSync(TEST_MEMORY_DIR)) {
+      fs.rmSync(TEST_MEMORY_DIR, { recursive: true, force: true });
     }
   });
 
@@ -32,9 +41,10 @@ describe("Task T-D4: Local SQLite & Zetaris Adapter", () => {
   // 1. Portable SQL Validator (SPONSOR_ZETARIS.md §6 Rule 4 & Acceptance Z-4)
   // ==========================================================================
   describe("Portable SQL Validator (validatePortableSql)", () => {
-    it("accepts valid portable SELECT queries", () => {
+    it("accepts valid portable SELECT queries and trailing comments", () => {
       expect(() => validatePortableSql("SELECT 1")).not.toThrow();
       expect(() => validatePortableSql("SELECT 1 AS one;")).not.toThrow();
+      expect(() => validatePortableSql("SELECT 1 AS one; -- trailing comment")).not.toThrow();
       expect(() =>
         validatePortableSql(
           "SELECT attack_id, class, priority FROM attacks WHERE target_scope LIKE '%support_triage%' ORDER BY priority ASC LIMIT 5"
@@ -112,6 +122,10 @@ describe("Task T-D4: Local SQLite & Zetaris Adapter", () => {
       expect(() =>
         validatePortableSql("SELECT * FROM attacks, policies")
       ).toThrow("Comma-separated table joins are not allowed");
+
+      expect(() =>
+        validatePortableSql("SELECT * FROM attacks AS a, policies AS p")
+      ).toThrow("Comma-separated table joins are not allowed");
     });
   });
 
@@ -151,6 +165,16 @@ describe("Task T-D4: Local SQLite & Zetaris Adapter", () => {
       const objects = rowsToObjects<{ attack_id: string; class: string; priority: number }>(res);
       expect(objects.length).toBe(14);
       expect(objects[0]).toEqual({ attack_id: "atk_exf_001", class: "injection_exfil", priority: 10 });
+    });
+
+    it("supports COUNT(*) and GROUP BY queries on attacks", () => {
+      const res = runLocalSql(
+        "SELECT carrier, COUNT(*) AS count FROM attacks GROUP BY carrier ORDER BY count DESC"
+      );
+      expect(res.columns).toEqual(["carrier", "count"]);
+      expect(res.rows.length).toBeGreaterThan(0);
+      const objects = rowsToObjects<{ carrier: string; count: number }>(res);
+      expect(objects.every((o) => typeof o.carrier === "string" && typeof o.count === "number")).toBe(true);
     });
 
     it("seeds policies table (7 rows, converts allowed to boolean true/false)", () => {
@@ -195,6 +219,39 @@ describe("Task T-D4: Local SQLite & Zetaris Adapter", () => {
       expect(res.rows[0][1]).toBe("2026-10-24T10:15:32.000Z");
       expect(res.rows[0][2]).toBe("Attacker");
     });
+
+    it("refreshes and resets fixes table from memory files", () => {
+      const mockFix = {
+        mem_id: "mem_a1b2c3d4",
+        source_target: "support_triage",
+        root_cause_code: "FT-01",
+        attack_class: "injection_override",
+        tool_kind: "money",
+        fix_types: ["prompt_rule"],
+        outcome: "verified",
+        trust: 0.95,
+      };
+
+      const fixFilePath = path.join(TEST_MEMORY_DIR, "mem_a1b2c3d4.json");
+      fs.writeFileSync(fixFilePath, JSON.stringify(mockFix));
+
+      const db = resetLocalDatabaseForTesting(":memory:");
+      refreshFixesFromMemory(db, TEST_MEMORY_DIR);
+
+      const query =
+        "SELECT mem_id, source_target, root_cause_code, trust FROM fixes WHERE root_cause_code = 'FT-01' AND trust >= 0.3 ORDER BY trust DESC LIMIT 3";
+      const res = runLocalSql(query, { db });
+      expect(res.rows.length).toBe(1);
+      expect(res.rows[0][0]).toBe("mem_a1b2c3d4");
+      expect(res.rows[0][3]).toBe(0.95);
+
+      // Simulate memory reset: delete file, refresh fixes, verify table cleared
+      fs.unlinkSync(fixFilePath);
+      refreshFixesFromMemory(db, TEST_MEMORY_DIR);
+
+      const resAfterReset = runLocalSql(query, { db });
+      expect(resAfterReset.rows.length).toBe(0);
+    });
   });
 
   // ==========================================================================
@@ -202,7 +259,7 @@ describe("Task T-D4: Local SQLite & Zetaris Adapter", () => {
   // ==========================================================================
   describe("Zetaris Adapter (runSql & Acceptance Checks)", () => {
     it("Check Z-2: executes 'SELECT 1 AS one;' and returns one row with 1", async () => {
-      const res = await runSql("SELECT 1 AS one;", { sampleMode: true });
+      const res = await runSql("SELECT 1 AS one;", { sampleMode: true, logDir: TEST_LOG_DIR });
       expect(res.columns).toEqual(["one"]);
       expect(res.rows.length).toBe(1);
       expect(res.rows[0][0]).toBe(1);
@@ -212,7 +269,7 @@ describe("Task T-D4: Local SQLite & Zetaris Adapter", () => {
     it("Check Z-4: Attacker seed query returns at least 5 rows for support_triage", async () => {
       const sql =
         "SELECT attack_id, class, priority FROM attacks WHERE target_scope LIKE '%support_triage%' ORDER BY priority ASC";
-      const res = await runSql(sql, { sampleMode: true });
+      const res = await runSql(sql, { sampleMode: true, logDir: TEST_LOG_DIR });
       expect(res.rows.length).toBeGreaterThanOrEqual(5);
       expect(res.columns).toEqual(["attack_id", "class", "priority"]);
     });
@@ -234,6 +291,7 @@ describe("Task T-D4: Local SQLite & Zetaris Adapter", () => {
       const res = await runSql("SELECT attack_id, class, priority FROM attacks", {
         sampleMode: false,
         apiKey: "test_secret_key",
+        logDir: TEST_LOG_DIR,
         fetchFn: mockFetch,
       });
 
@@ -243,10 +301,13 @@ describe("Task T-D4: Local SQLite & Zetaris Adapter", () => {
       expect(res.rows[0][0]).toBe("atk_exf_001");
     });
 
-    it("Check Z-5: retries once on network/5xx error and falls back to local store with degraded flag", async () => {
-      let callCount = 0;
-      const mockFailingFetch: typeof fetch = async () => {
-        callCount++;
+    it("Check Z-5: retries once with fresh queryId, falls back to local store, and output_summary starts with 'local store'", async () => {
+      const receivedQueryIds: string[] = [];
+      const mockFailingFetch: typeof fetch = async (url, init) => {
+        if (init?.body) {
+          const body = JSON.parse(init.body as string);
+          receivedQueryIds.push(body.queryId);
+        }
         return new Response("Internal Server Error", { status: 500 });
       };
 
@@ -256,6 +317,7 @@ describe("Task T-D4: Local SQLite & Zetaris Adapter", () => {
         {
           sampleMode: false,
           apiKey: "test_key",
+          logDir: TEST_LOG_DIR,
           fetchFn: mockFailingFetch,
           onDegraded: (code) => {
             degradedCode = code;
@@ -264,12 +326,23 @@ describe("Task T-D4: Local SQLite & Zetaris Adapter", () => {
       );
 
       // Verify it retried once (2 calls total)
-      expect(callCount).toBe(2);
+      expect(receivedQueryIds.length).toBe(2);
+      // Verify queryId on retry is fresh (UUIDs not equal)
+      expect(receivedQueryIds[0]).not.toEqual(receivedQueryIds[1]);
+
       // Verify fallback was executed on local store
       expect(res.source).toBe("local");
       expect(res.rows.length).toBeGreaterThanOrEqual(5);
       // Verify degraded code was recorded
       expect(degradedCode).toBe("zetaris_fallback");
+
+      // Verify trace line output_summary starts with 'local store' (DESIGN.md §9.1)
+      const logFiles = fs.readdirSync(TEST_LOG_DIR).filter((f) => f.endsWith(".jsonl"));
+      expect(logFiles.length).toBeGreaterThan(0);
+      const traceContent = fs.readFileSync(path.join(TEST_LOG_DIR, logFiles[0]), "utf-8");
+      const traceObj = JSON.parse(traceContent.trim());
+      expect(traceObj.output_summary.startsWith("local store")).toBe(true);
+      expect(traceObj.status).toBe("fallback");
     });
 
     it("Check Z-6: wrong API key (HTTP 401) throws structured error, NEVER retries, NEVER falls back", async () => {
@@ -284,6 +357,7 @@ describe("Task T-D4: Local SQLite & Zetaris Adapter", () => {
         runSql("SELECT 1", {
           sampleMode: false,
           apiKey: "wrong_key",
+          logDir: TEST_LOG_DIR,
           fetchFn: mockAuthFailFetch,
           onDegraded: () => {
             degradedCalled = true;
@@ -307,12 +381,38 @@ describe("Task T-D4: Local SQLite & Zetaris Adapter", () => {
         await runSql("SELECT 1", {
           sampleMode: false,
           apiKey: SECRET_KEY,
+          logDir: TEST_LOG_DIR,
           fetchFn: mockFetch,
         });
         expect.unreachable("Should have thrown HTTP 400");
       } catch (err: any) {
         expect(err.message).not.toContain(SECRET_KEY);
       }
+    });
+  });
+
+  // ==========================================================================
+  // 5. maskCanary Normalized Leak Tests (DATA_CONTRACTS.md §14 & J-07)
+  // ==========================================================================
+  describe("Canary Masking (maskCanary)", () => {
+    const canary = "CANARY-SUP-ab12cd";
+
+    it("masks exact canary key", () => {
+      expect(maskCanary("Secret is CANARY-SUP-ab12cd", canary)).toBe("Secret is CANARY-***");
+    });
+
+    it("masks normalized canary key with spaces (J-07)", () => {
+      expect(maskCanary("Found canary sup ab12cd in output", canary)).toBe("Found CANARY-*** in output");
+    });
+
+    it("masks normalized canary key with underscores or dashes", () => {
+      expect(maskCanary("Token: canary_sup_ab12cd", canary)).toBe("Token: CANARY-***");
+      expect(maskCanary("Token: canary-sup-ab12cd", canary)).toBe("Token: CANARY-***");
+    });
+
+    it("masks general CANARY-<PREFIX>-<HEX> patterns even without canaryKey", () => {
+      expect(maskCanary("Leaked CANARY-MTG-f1e2d3 here")).toBe("Leaked CANARY-*** here");
+      expect(maskCanary("Leaked canary mtg f1e2d3 here")).toBe("Leaked CANARY-*** here");
     });
   });
 });

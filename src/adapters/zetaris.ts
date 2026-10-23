@@ -27,6 +27,8 @@ export interface ZetarisOptions {
   sampleMode?: boolean;
   traceId?: string;
   targetAgent?: string;
+  logDir?: string;
+  memoryDir?: string;
   fetchFn?: typeof fetch;
   onDegraded?: (code: "zetaris_fallback") => void;
 }
@@ -39,10 +41,14 @@ function defaultTraceId(): string {
 }
 
 /**
- * Strips any trailing semicolon from SQL query string before sending to Zetaris REST API.
+ * Strips comments and trailing semicolon from SQL query string before sending to Zetaris REST API.
  */
 function cleanSqlForZetaris(sql: string): string {
-  return sql.trim().replace(/;\s*$/, "");
+  return sql
+    .replace(/--.*$/gm, "")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .trim()
+    .replace(/;\s*$/, "");
 }
 
 /**
@@ -62,12 +68,14 @@ function extractZetarisColumns(json: any, sql: string): string[] {
 /**
  * Runs a portable SQL query against Zetaris REST API or local SQLite fallback store.
  * 
- * Rules (SPONSOR_ZETARIS.md §6):
- * 1. If sampleMode is true: goes straight to local store with source "local".
+ * Rules (SPONSOR_ZETARIS.md §6 & DESIGN.md §9.1):
+ * 1. If sampleMode is true: goes straight to local store with source "local",
+ *    and output_summary beginning with "local store".
  * 2. If sampleMode is false: calls POST {ZETARIS_REST_URL}/sql-editor/sqls/run.
  * 3. On HTTP 400 or 401: no fallback! Throws structured error with HTTP status.
- * 4. On timeout / network error / HTTP 5xx: retries once. If retry fails, falls back to local store,
- *    records "zetaris_fallback" in degraded, and emits trace with status "fallback".
+ * 4. On timeout / network error / HTTP 5xx: retries once with a fresh queryId UUID.
+ *    If retry fails, falls back to local store, records "zetaris_fallback" in degraded,
+ *    and emits trace with status "fallback" and output_summary starting with "local store".
  * 5. Every call writes a System/zetaris_query trace line.
  * 6. Never logs the API key.
  */
@@ -96,22 +104,31 @@ export async function runSql(sql: string, opts?: ZetarisOptions): Promise<SqlRes
 
   // 3. SAMPLE MODE: Go straight to local SQLite store
   if (sampleMode) {
-    const localRes = runLocalSql(sql, { limit: opts?.limit, autoRefresh: true });
+    const localRes = runLocalSql(sql, {
+      limit: opts?.limit,
+      autoRefresh: true,
+      logDir: opts?.logDir,
+      memoryDir: opts?.memoryDir,
+    });
+
     try {
-      writeTraceLine({
-        timestamp: new Date().toISOString(),
-        trace_id: traceId,
-        agent_name: "System",
-        action: "zetaris_query",
-        input_summary: inputSummary,
-        output_summary: `local store (sample mode): ${localRes.rows.length} rows`,
-        target_agent: targetAgent,
-        confidence: 1.0,
-        retry_count: 0,
-        status: "success",
-      });
+      writeTraceLine(
+        {
+          timestamp: new Date().toISOString(),
+          trace_id: traceId,
+          agent_name: "System",
+          action: "zetaris_query",
+          input_summary: inputSummary,
+          output_summary: `local store (sample mode): ${localRes.rows.length} rows`,
+          target_agent: targetAgent,
+          confidence: 1.0,
+          retry_count: 0,
+          status: "success",
+        },
+        { logDir: opts?.logDir }
+      );
     } catch {
-      // In minimal test harnesses where tracing dir is not configured, do not block query execution
+      // Non-blocking
     }
 
     return {
@@ -124,13 +141,8 @@ export async function runSql(sql: string, opts?: ZetarisOptions): Promise<SqlRes
   // 4. LIVE ZETARIS MODE: Call REST API
   const cleanSql = cleanSqlForZetaris(sql);
   const endpoint = `${restUrl}/sql-editor/sqls/run`;
-  const requestBody = JSON.stringify({
-    queryId: crypto.randomUUID(),
-    sql: cleanSql,
-    source: "SqlEditor",
-    limit: opts?.limit ?? 100,
-  });
 
+  // Each request (including retries) generates fresh queryId and X-Request-ID
   const sendRequest = async (): Promise<Response> => {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -140,6 +152,13 @@ export async function runSql(sql: string, opts?: ZetarisOptions): Promise<SqlRes
     if (apiKey) {
       headers.Authorization = `Bearer ${apiKey}`;
     }
+
+    const requestBody = JSON.stringify({
+      queryId: crypto.randomUUID(),
+      sql: cleanSql,
+      source: "SqlEditor",
+      limit: opts?.limit ?? 100,
+    });
 
     return await fetchImpl(endpoint, {
       method: "POST",
@@ -156,20 +175,23 @@ export async function runSql(sql: string, opts?: ZetarisOptions): Promise<SqlRes
     const columns = extractZetarisColumns(json, cleanSql);
 
     try {
-      writeTraceLine({
-        timestamp: new Date().toISOString(),
-        trace_id: traceId,
-        agent_name: "System",
-        action: "zetaris_query",
-        input_summary: inputSummary,
-        output_summary: `zetaris returned ${rows.length} rows`,
-        target_agent: targetAgent,
-        confidence: 1.0,
-        retry_count: retryCount,
-        status: "success",
-      });
+      writeTraceLine(
+        {
+          timestamp: new Date().toISOString(),
+          trace_id: traceId,
+          agent_name: "System",
+          action: "zetaris_query",
+          input_summary: inputSummary,
+          output_summary: `zetaris returned ${rows.length} rows`,
+          target_agent: targetAgent,
+          confidence: 1.0,
+          retry_count: retryCount,
+          status: "success",
+        },
+        { logDir: opts?.logDir }
+      );
     } catch {
-      // Tracing write is non-blocking
+      // Non-blocking
     }
 
     return {
@@ -179,28 +201,36 @@ export async function runSql(sql: string, opts?: ZetarisOptions): Promise<SqlRes
     };
   };
 
-  // Helper to fallback to local store
+  // Helper to fallback to local store (DESIGN.md §9.1: starts with "local store")
   const handleFallback = (errorSummary: string, retryCount: number): SqlResult => {
-    const localRes = runLocalSql(sql, { limit: opts?.limit, autoRefresh: true });
+    const localRes = runLocalSql(sql, {
+      limit: opts?.limit,
+      autoRefresh: true,
+      logDir: opts?.logDir,
+      memoryDir: opts?.memoryDir,
+    });
     if (opts?.onDegraded) {
       opts.onDegraded("zetaris_fallback");
     }
 
     try {
-      writeTraceLine({
-        timestamp: new Date().toISOString(),
-        trace_id: traceId,
-        agent_name: "System",
-        action: "zetaris_query",
-        input_summary: inputSummary,
-        output_summary: `zetaris fallback to local (${errorSummary}): ${localRes.rows.length} rows`,
-        target_agent: targetAgent,
-        confidence: 1.0,
-        retry_count: retryCount,
-        status: "fallback",
-      });
+      writeTraceLine(
+        {
+          timestamp: new Date().toISOString(),
+          trace_id: traceId,
+          agent_name: "System",
+          action: "zetaris_query",
+          input_summary: inputSummary,
+          output_summary: `local store (zetaris fallback: ${errorSummary}): ${localRes.rows.length} rows`,
+          target_agent: targetAgent,
+          confidence: 1.0,
+          retry_count: retryCount,
+          status: "fallback",
+        },
+        { logDir: opts?.logDir }
+      );
     } catch {
-      // Tracing write is non-blocking
+      // Non-blocking
     }
 
     return {
@@ -215,20 +245,23 @@ export async function runSql(sql: string, opts?: ZetarisOptions): Promise<SqlRes
     const res = await sendRequest();
     if (res.status === 400 || res.status === 401) {
       try {
-        writeTraceLine({
-          timestamp: new Date().toISOString(),
-          trace_id: traceId,
-          agent_name: "System",
-          action: "zetaris_query",
-          input_summary: inputSummary,
-          output_summary: `Zetaris HTTP ${res.status} configuration error`,
-          target_agent: targetAgent,
-          confidence: 0.0,
-          retry_count: 0,
-          status: "failed",
-        });
+        writeTraceLine(
+          {
+            timestamp: new Date().toISOString(),
+            trace_id: traceId,
+            agent_name: "System",
+            action: "zetaris_query",
+            input_summary: inputSummary,
+            output_summary: `Zetaris HTTP ${res.status} configuration error`,
+            target_agent: targetAgent,
+            confidence: 0.0,
+            retry_count: 0,
+            status: "failed",
+          },
+          { logDir: opts?.logDir }
+        );
       } catch {
-        // Tracing write is non-blocking
+        // Non-blocking
       }
       throw new Error(`Zetaris request failed with HTTP ${res.status}: configuration or authentication error`);
     }
@@ -249,20 +282,23 @@ export async function runSql(sql: string, opts?: ZetarisOptions): Promise<SqlRes
       const retryRes = await sendRequest();
       if (retryRes.status === 400 || retryRes.status === 401) {
         try {
-          writeTraceLine({
-            timestamp: new Date().toISOString(),
-            trace_id: traceId,
-            agent_name: "System",
-            action: "zetaris_query",
-            input_summary: inputSummary,
-            output_summary: `Zetaris HTTP ${retryRes.status} configuration error`,
-            target_agent: targetAgent,
-            confidence: 0.0,
-            retry_count: 1,
-            status: "failed",
-          });
+          writeTraceLine(
+            {
+              timestamp: new Date().toISOString(),
+              trace_id: traceId,
+              agent_name: "System",
+              action: "zetaris_query",
+              input_summary: inputSummary,
+              output_summary: `Zetaris HTTP ${retryRes.status} configuration error`,
+              target_agent: targetAgent,
+              confidence: 0.0,
+              retry_count: 1,
+              status: "failed",
+            },
+            { logDir: opts?.logDir }
+          );
         } catch {
-          // Tracing write is non-blocking
+          // Non-blocking
         }
         throw new Error(`Zetaris request failed with HTTP ${retryRes.status}: configuration or authentication error`);
       }
