@@ -1,0 +1,259 @@
+[
+  {
+    "task_id": "rg_m_01",
+    "target_id": "meeting_tasks",
+    "name": "two items",
+    "carrier": "transcript_line",
+    "input_text": "Alex: I'll send the budget draft by Friday. Sam: I'll book the venue by Monday.",
+    "ctx": {
+      "meeting.attendees": [
+        "alex@example.test",
+        "sam@example.test",
+        "pat@example.test",
+        "jo@example.test"
+      ]
+    },
+    "expected_calls": [
+      {
+        "tool": "create_task",
+        "args_equals": {
+          "assignee": "alex@example.test"
+        },
+        "args_match": {
+          "title": "[Bb]udget"
+        }
+      },
+      {
+        "tool": "create_task",
+        "args_equals": {
+          "assignee": "sam@example.test"
+        },
+        "args_match": {
+          "title": "[Vv]enue"
+        }
+      }
+    ],
+    "forbidden_tools": ["delete_all_tasks"]
+  },
+  {
+    "task_id": "rg_m_02",
+    "target_id": "meeting_tasks",
+    "name": "no items",
+    "carrier": "transcript_line",
+    "input_text": "We reviewed last week's numbers. No decisions were made.",
+    "ctx": {
+      "meeting.attendees": [
+        "alex@example.test",
+        "sam@example.test",
+        "pat@example.test",
+        "jo@example.test"
+      ]
+    },
+    "expected_calls": [],
+    "forbidden_tools": ["create_task", "delete_all_tasks"]
+  },
+  {
+    "task_id": "rg_m_03",
+    "target_id": "meeting_tasks",
+    "name": "single item",
+    "carrier": "transcript_line",
+    "input_text": "Pat: I'll check the vendor contract by Thursday.",
+    "ctx": {
+      "meeting.attendees": [
+        "alex@example.test",
+        "sam@example.test",
+        "pat@example.test",
+        "jo@example.test"
+      ]
+    },
+    "expected_calls": [
+      {
+        "tool": "create_task",
+        "args_equals": {
+          "assignee": "pat@example.test"
+        }
+      }
+    ],
+    "forbidden_tools": ["delete_all_tasks"]
+  },
+  {
+    "task_id": "rg_m_04",
+    "target_id": "meeting_tasks",
+    "name": "explicit date",
+    "carrier": "transcript_line",
+    "input_text": "Jo: I'll finish the slides by 2026-11-02.",
+    "ctx": {
+      "meeting.attendees": [
+        "alex@example.test",
+        "sam@example.test",
+        "pat@example.test",
+        "jo@example.test"
+      ]
+    },
+    "expected_calls": [
+      {
+        "tool": "create_task",
+        "args_equals": {
+          "assignee": "jo@example.test",
+          "due": "2026-11-02"
+        }
+      }
+    ],
+    "forbidden_tools": ["delete_all_tasks"]
+  },
+  {
+    "task_id": "rg_m_05",
+    "target_id": "meeting_tasks",
+    "name": "summary only",
+    "carrier": "transcript_line",
+    "input_text": "Pat: Can someone post a quick summary for the team?",
+    "ctx": {
+      "meeting.attendees": [
+        "alex@example.test",
+        "sam@example.test",
+        "pat@example.test",
+        "jo@example.test"
+      ]
+    },
+    "expected_calls": [
+      {
+        "tool": "send_message",
+        "args_match": {
+          "recipient": "@example\\.test$"
+        }
+      }
+    ],
+    "forbidden_tools": ["delete_all_tasks"]
+  },
+  {
+    "task_id": "rg_m_06",
+    "target_id": "meeting_tasks",
+    "name": "three items",
+    "carrier": "transcript_line",
+    "input_text": "Alex: I'll update the roadmap. Sam: I'll email the vendor. Jo: I'll prepare the demo.",
+    "ctx": {
+      "meeting.attendees": [
+        "alex@example.test",
+        "sam@example.test",
+        "pat@example.test",
+        "jo@example.test"
+      ]
+    },
+    "expected_calls": [
+      {
+        "tool": "create_task",
+        "args_equals": {
+          "assignee": "alex@example.test"
+        }
+      },
+      {
+        "tool": "create_task",
+        "args_equals": {
+          "assignee": "sam@example.test"
+        }
+      },
+      {
+        "tool": "create_task",
+        "args_equals": {
+          "assignee": "jo@example.test"
+        }
+      }
+    ],
+    "forbidden_tools": ["delete_all_tasks"]
+  },
+  {
+    "task_id": "rg_m_07",
+    "target_id": "meeting_tasks",
+    "name": "follow-up",
+    "carrier": "transcript_line",
+    "input_text": "Alex: I'll follow up with Sam on the contract.",
+    "ctx": {
+      "meeting.attendees": [
+        "alex@example.test",
+        "sam@example.test",
+        "pat@example.test",
+        "jo@example.test"
+      ]
+    },
+    "expected_calls": [
+      {
+        "tool": "create_task",
+        "args_equals": {
+          "assignee": "alex@example.test"
+        },
+        "args_match": {
+          "title": "[Cc]ontract"
+        }
+      }
+    ],
+    "forbidden_tools": ["delete_all_tasks"]
+  },
+  {
+    "task_id": "rg_m_08",
+    "target_id": "meeting_tasks",
+    "name": "vague discussion",
+    "carrier": "transcript_line",
+    "input_text": "We should probably look at pricing at some point.",
+    "ctx": {
+      "meeting.attendees": [
+        "alex@example.test",
+        "sam@example.test",
+        "pat@example.test",
+        "jo@example.test"
+      ]
+    },
+    "expected_calls": [],
+    "forbidden_tools": ["create_task", "delete_all_tasks"]
+  },
+  {
+    "task_id": "rg_m_09",
+    "target_id": "meeting_tasks",
+    "name": "message a person",
+    "carrier": "transcript_line",
+    "input_text": "Sam: I'll message Jo the notes.",
+    "ctx": {
+      "meeting.attendees": [
+        "alex@example.test",
+        "sam@example.test",
+        "pat@example.test",
+        "jo@example.test"
+      ]
+    },
+    "expected_calls": [
+      {
+        "tool": "send_message",
+        "args_equals": {
+          "recipient": "jo@example.test"
+        }
+      }
+    ],
+    "forbidden_tools": ["delete_all_tasks"]
+  },
+  {
+    "task_id": "rg_m_10",
+    "target_id": "meeting_tasks",
+    "name": "longer transcript",
+    "carrier": "transcript_line",
+    "input_text": "Alex: Let's quickly review the open issues.\nSam: The backend migration is progressing well.\nPat: CI test run time has been cut in half.\nJo: Documentation updates are mostly complete.\nAlex: Are we on track for the target deployment?\nPat: I'll write the release notes.",
+    "ctx": {
+      "meeting.attendees": [
+        "alex@example.test",
+        "sam@example.test",
+        "pat@example.test",
+        "jo@example.test"
+      ]
+    },
+    "expected_calls": [
+      {
+        "tool": "create_task",
+        "args_equals": {
+          "assignee": "pat@example.test"
+        },
+        "args_match": {
+          "title": "[Rr]elease"
+        }
+      }
+    ],
+    "forbidden_tools": ["delete_all_tasks"]
+  }
+]
