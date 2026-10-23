@@ -54,16 +54,45 @@ The starter template: `npx degit meterless/meterless/templates/agentathon-starte
 6. **Feature test (ours, reproducible):** `npm run test:memory` runs: store a verified fix from target A; retrieve it for a target-B query; assert it is returned with trust above the minimum; update trust after a simulated success and a failure; assert ordering changes. Save output to `logs/memory_feature_test.txt`.
 7. **Persistence:** the store lives in `data/memory/` (git-ignored except a `.gitkeep`). `memory_mode: "cold"` uses a fresh temp directory.
 
-### A6. H-MEM facts to fill in after the spike (`UNVERIFIED` placeholders)
+### A6. H-MEM engine facts and FixMemory mapping (Verified in T-D6 & T-D7)
 
 | Item | Value |
 |---|---|
-| Package or module path used | TBD |
-| Write call name and payload | TBD |
-| Retrieval call name and query shape | TBD |
-| Trust ledger API | TBD |
-| Conflict resolution API | TBD |
-| Any required generator (model) injection | TBD (the Meterless README says engines take an injected `generator`; ours is `src/adapters/llm/`) |
+| Package or module path used | `src/adapters/engines/hmem-ref/index.ts` (vendored from `meterless/meterless/engines/hmem/reference/src/index.ts`, Apache 2.0) |
+| Write call name and payload | `hmem.add({ content: string, confidence: number, source: string, tags: string[], layer: "long_term", type: "factual" })` returning `MemoryRecord` |
+| Retrieval call name and query shape | `hmem.query(queryText: string, { topN?: number, threshold?: number })` returning `QueryResult` (`memories: RetrievedMemory[]`, `trace`) |
+| Trust ledger API | `hmem.ledger.log(id, action, actor, { previousState, newState, details })` and `hmem.feedback(id, "helpful" \| "wrong" \| "not_helpful")` |
+| Conflict resolution API | `hmem.conflicts.scan()`, `hmem.conflicts.autoResolve(conflict)` (sets `loser.supersededBy = winner.id`), and `ledger.log(..., "conflict_resolved", ...)` |
+| Any required generator (model) injection | Optional `minerFn?: (prompt: string) => Promise<string>`; Antibody uses the deterministic model-free FNV-1a embedder (`embed`, `cosine`, `jaccard`), zero external runtime dependencies |
+
+#### How Antibody's `FixMemory` interface maps onto H-MEM
+
+1. **Storage Mapping (`store`):**
+   - Antibody's `MemoryRecord` (`DATA_CONTRACTS.md` §9) carries structured security fix data (`mem_id`, `root_cause_code`, `attack_class`, `implicated_tool_kind`, `fix_ops`, `trust`, `reuse_log`).
+   - `HMemFixMemory` maps each fix into H-MEM by generating structured content `"[<root_cause>] [<attack_class>] [<tool_kind>] <rationale>"`, tagged with the root cause, attack class, and target id.
+   - It invokes `hmem.add({ content, confidence: record.trust, source: record.source_target, tags, layer: "long_term", type: "factual" })`.
+   - Antibody's full record payload is stored in `records.json` in `data/memory/` and bi-directionally mapped to H-MEM's record id (`memIdToHmemId` and `hmemIdToMemId`).
+
+2. **Retrieval & Ranking (`retrieve`):**
+   - In `retrieve(query: MemoryQuery)`, candidates are filtered by `record.trust >= query.min_trust`.
+   - Ranking adheres to `AGENT_SPEC.md` §6.4: exact `root_cause_code` matches score highest (+1000), followed by `tool_kind` (+100) and `attack_class` (+50), boosted by H-MEM's hybrid ranking score (`scoreOne`, combining semantic FNV-1a cosine similarity and token Jaccard).
+   - In accordance with H-MEM specification, records marked `supersededBy` receive a -500 penalty but are never deleted.
+   - For every returned memory, `hmem.store.touch(id)` and `hmem.ledger.log(id, "read", ...)` record audit access.
+
+3. **Trust & Feedback (`updateTrust`):**
+   - Success on target verification (+0.2 on Antibody trust, clamped to 1.0) invokes `hmem.feedback(hmemId, "helpful")` (+0.05 H-MEM confidence, increments accessCount).
+   - Failure on target verification (-0.3 on Antibody trust, floored at 0.0) invokes `hmem.feedback(hmemId, "wrong")` (-0.20 H-MEM confidence, appends "review" tag).
+   - Each event appends an entry to `record.reuse_log: { run: runId, target, result }` and records in the append-only ledger.
+
+4. **Conflict Resolution:**
+   - If a new fix shares `(root_cause_code, attack_class, implicated_tool_kind)` with an existing record but specifies different `fix_ops`, conflict detection triggers.
+   - The higher-trust fix wins; the losing record is penalized and marked `supersededBy` the winner, and `hmem.ledger.log(..., "conflict_resolved", ...)` records the audit trail.
+
+5. **Operational Modes & Resilience:**
+   - `"warm"`: Reads and persists state to `data/memory/` (`records.json`, `state.json`, `ledger.jsonl`).
+   - `"cold"`: Runs completely in-memory without persistent disk side-effects.
+   - `"off"`: No-op writes, empty reads.
+   - Fault tolerance: Any unexpected IO or engine error logs a fallback trace line, notifies `onDegraded("memory_unavailable")`, and returns `[]` without throwing or halting the agent loop.
 
 ### A7. Fallback
 

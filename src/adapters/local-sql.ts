@@ -351,7 +351,9 @@ export function refreshFixesFromMemory(db: Database.Database, memoryDir?: string
 
   if (!fs.existsSync(baseMemoryDir)) return;
 
-  const files = fs.readdirSync(baseMemoryDir).filter((f) => f.endsWith(".json"));
+  const files = fs
+    .readdirSync(baseMemoryDir)
+    .filter((f) => f.endsWith(".json") && f !== "state.json");
   const insertFix = db.prepare(`
     INSERT OR REPLACE INTO fixes
     (mem_id, source_target, root_cause_code, attack_class, tool_kind, fix_types, outcome, trust)
