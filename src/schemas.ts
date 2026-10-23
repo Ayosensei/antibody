@@ -20,7 +20,7 @@ export const MemIdSchema = z.string().regex(MEM_ID_REGEX);
 export const FilterIdSchema = z.string().regex(FILTER_ID_REGEX);
 
 // ============================================================================
-// 2. Enums (DATA_CONTRACTS.md §2)
+// 2. Enums & Fixed Mappings (DATA_CONTRACTS.md §2)
 // ============================================================================
 export const TargetIdSchema = z.enum(["support_triage", "meeting_tasks"]);
 export type TargetId = z.infer<typeof TargetIdSchema>;
@@ -111,22 +111,34 @@ export type MemoryMode = z.infer<typeof MemoryModeSchema>;
 export const ReadinessSchema = z.enum(["ready", "ready_with_risks", "not_ready"]);
 export type Readiness = z.infer<typeof ReadinessSchema>;
 
+// Aligned with DATA_CONTRACTS.md §11.2, AGENT_SPEC.md, and DESIGN.md §11.6
 export const DegradedCodeSchema = z.enum([
-  "sample_mode",
-  "fallback_provider",
-  "replay_mode",
-  "local_store",
+  "zetaris_fallback",
   "memory_unavailable",
-  "llm_budget_hit",
-  "timeout_hit",
+  "budget_exhausted",
+  "high_error_rate",
+  "verifier_error",
   "unverified_explanation",
+  "fallback_provider",
 ]);
 export type DegradedCode = z.infer<typeof DegradedCodeSchema>;
 
-// Tools mapping validation
 export const TOOLS_BY_TARGET: Record<TargetId, ToolName[]> = {
   support_triage: ["issue_refund", "update_crm", "send_reply", "export_customer_list"],
   meeting_tasks: ["create_task", "send_message", "delete_all_tasks"],
+};
+
+export const CARRIERS_BY_TARGET: Record<TargetId, Carrier[]> = {
+  support_triage: ["email_body", "ticket_field", "form_field"],
+  meeting_tasks: ["transcript_line", "form_field"],
+};
+
+export const ATTACK_CLASS_CODE: Record<AttackClass, string> = {
+  injection_override: "inj",
+  injection_exfil: "exf",
+  policy_bypass: "pol",
+  loop_induction: "lop",
+  canary_probe: "can",
 };
 
 export const TOOL_KINDS: Record<ToolName, ToolKind> = {
@@ -139,8 +151,35 @@ export const TOOL_KINDS: Record<ToolName, ToolKind> = {
   delete_all_tasks: "destructive",
 };
 
+const URL_SCHEME_RE = /https?:\/\//i;
+const EMAIL_TOKEN_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+/g;
+
+function validateNoBannedUrlOrEmail(text: string, fieldName: string, ctx: z.RefinementCtx) {
+  if (URL_SCHEME_RE.test(text)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [fieldName],
+      message: `${fieldName} must not contain URLs (http:// or https://)`,
+    });
+  }
+  const emailMatches = text.match(EMAIL_TOKEN_RE);
+  if (emailMatches) {
+    for (const rawEmail of emailMatches) {
+      // Strip trailing sentence punctuation like "." or "," or ")"
+      const email = rawEmail.replace(/[.,;:!?)"']+$/, "");
+      if (!email.toLowerCase().endsWith("@example.test")) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [fieldName],
+          message: `emails in ${fieldName} must end with @example.test: ${email}`,
+        });
+      }
+    }
+  }
+}
+
 // ============================================================================
-// 16. Evidence refs and explanations (Defined early to support schemas below)
+// 16. Evidence refs and explanations (DATA_CONTRACTS.md §16)
 // ============================================================================
 export const EvidenceRefSchema = z.string().min(1);
 export type EvidenceRef = z.infer<typeof EvidenceRefSchema>;
@@ -179,50 +218,97 @@ export const ExplanationClaimSchema = z.object({
   claim_id: z.string().min(1),
   kind: z.enum(["cause", "decision", "outcome", "risk"]),
   text: z.string().min(1).max(240),
-  evidence: z.array(EvidenceRefSchema).min(1).max(5),
+  // Base array allows 0..N so unverified explanations (e.g. fixture X-03) can be parsed;
+  // strict 1..5 is enforced when verified === true and by validateExplanation (Rule V-2).
+  evidence: z.array(EvidenceRefSchema),
 });
 export type ExplanationClaim = z.infer<typeof ExplanationClaimSchema>;
 
-export const ExplanationSchema = z.object({
-  subject: z.enum(["diagnosis", "fix", "verification", "readiness", "unresolved"]),
-  subject_id: z.string().min(1),
-  claims: z.array(ExplanationClaimSchema).min(1).max(8),
-  generated_by: z.enum(["llm", "code"]),
-  verified: z.boolean(),
-  validation_errors: z.array(z.string()),
-});
+export const ExplanationSchema = z
+  .object({
+    subject: z.enum(["diagnosis", "fix", "verification", "readiness", "unresolved"]),
+    subject_id: z.string().min(1),
+    // Base array allows 0..N so unverified explanations (e.g. fixture X-11 with 9 claims) can be parsed;
+    // strict 1..8 is enforced when verified === true and by validateExplanation (Rule V-1).
+    claims: z.array(ExplanationClaimSchema),
+    generated_by: z.enum(["llm", "code"]),
+    verified: z.boolean(),
+    validation_errors: z.array(z.string()),
+  })
+  .superRefine((val, ctx) => {
+    if (val.verified) {
+      if (val.validation_errors.length > 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["validation_errors"],
+          message: "validation_errors must be empty when verified is true",
+        });
+      }
+      if (val.claims.length < 1 || val.claims.length > 8) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["claims"],
+          message: "V-1: verified explanation must have 1 to 8 claims",
+        });
+      }
+      const seenIds = new Set<string>();
+      for (let i = 0; i < val.claims.length; i++) {
+        const c = val.claims[i];
+        if (seenIds.has(c.claim_id)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["claims", i, "claim_id"],
+            message: `V-1: duplicate claim_id '${c.claim_id}'`,
+          });
+        }
+        seenIds.add(c.claim_id);
+        if (c.evidence.length < 1 || c.evidence.length > 5) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["claims", i, "evidence"],
+            message: "V-2: each claim in a verified explanation must have 1 to 5 evidence refs",
+          });
+        }
+      }
+    }
+  });
 export type Explanation = z.infer<typeof ExplanationSchema>;
 
 // ============================================================================
 // 3. Policy (DATA_CONTRACTS.md §3)
 // ============================================================================
-export const ArgRuleSchema = z.object({
-  field: z.string().min(1),
-  op: z.enum(["max", "equals_ctx", "in_ctx", "in_enum", "regex"]),
-  value: z.union([z.number(), z.string(), z.array(z.string())]).optional(),
-  ctx_key: z.string().optional(),
-}).superRefine((val, ctx) => {
-  if (val.op === "max" && typeof val.value !== "number") {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "op 'max' requires numeric value" });
-  }
-  if (val.op === "regex") {
-    if (typeof val.value !== "string") {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "op 'regex' requires string value" });
-    } else {
-      try {
-        new RegExp(val.value);
-      } catch {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "invalid regex pattern" });
+export const ArgRuleSchema = z
+  .object({
+    field: z.string().min(1),
+    op: z.enum(["max", "equals_ctx", "in_ctx", "in_enum", "regex"]),
+    value: z.union([z.number(), z.string(), z.array(z.string())]).optional(),
+    ctx_key: z.string().optional(),
+  })
+  .superRefine((val, ctx) => {
+    if (val.op === "max" && (typeof val.value !== "number" || !Number.isFinite(val.value))) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "op 'max' requires finite numeric value" });
+    }
+    if (val.op === "regex") {
+      if (typeof val.value !== "string") {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "op 'regex' requires string value" });
+      } else {
+        try {
+          new RegExp(val.value);
+        } catch {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "invalid regex pattern" });
+        }
       }
     }
-  }
-  if (val.op === "in_enum" && (!Array.isArray(val.value) || !val.value.every((v) => typeof v === "string"))) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "op 'in_enum' requires string array value" });
-  }
-  if ((val.op === "equals_ctx" || val.op === "in_ctx") && !val.ctx_key) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: `op '${val.op}' requires ctx_key` });
-  }
-});
+    if (
+      val.op === "in_enum" &&
+      (!Array.isArray(val.value) || val.value.length === 0 || !val.value.every((v) => typeof v === "string"))
+    ) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "op 'in_enum' requires non-empty string array value" });
+    }
+    if ((val.op === "equals_ctx" || val.op === "in_ctx") && (!val.ctx_key || val.ctx_key.trim() === "")) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `op '${val.op}' requires ctx_key` });
+    }
+  });
 export type ArgRule = z.infer<typeof ArgRuleSchema>;
 
 export const ToolPolicySchema = z.object({
@@ -231,29 +317,68 @@ export const ToolPolicySchema = z.object({
 });
 export type ToolPolicy = z.infer<typeof ToolPolicySchema>;
 
-export const PolicySchema = z.object({
-  target_id: TargetIdSchema,
-  tools: z.record(ToolNameSchema, ToolPolicySchema),
-  caps: z.object({
-    max_steps: z.number().int().min(1).max(20),
-    max_tokens: z.number().int().min(500).max(20000),
-  }),
-  canary_prefix: z.string().min(1),
-  ctx_schema: z.array(z.string()),
-}).superRefine((val, ctx) => {
-  const expectedTools = TOOLS_BY_TARGET[val.target_id];
-  for (const tool of expectedTools) {
-    if (!val.tools[tool]) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `Missing policy entry for target tool ${tool}` });
+// Partial<Record<ToolName, ToolPolicy>> both at runtime and in TypeScript inference
+const PartialToolPolicyMapSchema = z
+  .object({
+    issue_refund: ToolPolicySchema,
+    update_crm: ToolPolicySchema,
+    send_reply: ToolPolicySchema,
+    export_customer_list: ToolPolicySchema,
+    create_task: ToolPolicySchema,
+    send_message: ToolPolicySchema,
+    delete_all_tasks: ToolPolicySchema,
+  })
+  .partial()
+  .strict();
+
+export const PolicySchema = z
+  .object({
+    target_id: TargetIdSchema,
+    tools: PartialToolPolicyMapSchema,
+    caps: z.object({
+      max_steps: z.number().int().min(1).max(20),
+      max_tokens: z.number().int().min(500).max(20000),
+    }),
+    canary_prefix: z.string().min(1),
+    ctx_schema: z.array(z.string().min(1)),
+  })
+  .superRefine((val, ctx) => {
+    const expectedTools = new Set<string>(TOOLS_BY_TARGET[val.target_id]);
+    for (const tool of expectedTools) {
+      if (!val.tools[tool as ToolName]) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["tools", tool],
+          message: `Missing policy entry for target tool ${tool}`,
+        });
+      }
     }
-  }
-});
+    for (const presentTool of Object.keys(val.tools)) {
+      if (!expectedTools.has(presentTool)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["tools", presentTool],
+          message: `Tool ${presentTool} does not belong to target ${val.target_id}`,
+        });
+      }
+    }
+  });
 export type Policy = z.infer<typeof PolicySchema>;
 
 // ============================================================================
 // 4. TargetConfig (DATA_CONTRACTS.md §4)
 // ============================================================================
-const BANNED_PATTERNS = ["^.*$", "^.+$", "^\\w+$", "^\\s+$", ".*", ".+", "\\w+", "\\s+"];
+const BANNED_PATTERNS = new Set([".*", ".+", "\\w+", "\\s+", "[\\s\\S]*", "[\\s\\S]+"]);
+
+function isBannedBroadPattern(raw: string): boolean {
+  let cleaned = raw.trim();
+  // Strip outer ^ and $ anchors and outer parentheses to catch ^(.+)$ or (.*)
+  cleaned = cleaned.replace(/^\^+|\$+$/g, "");
+  while (cleaned.startsWith("(") && cleaned.endsWith(")")) {
+    cleaned = cleaned.slice(1, -1).replace(/^\^+|\$+$/g, "");
+  }
+  return BANNED_PATTERNS.has(cleaned);
+}
 
 export const BaseInputFilterSchema = z.object({
   filter_id: FilterIdSchema,
@@ -265,18 +390,26 @@ export const BaseInputFilterSchema = z.object({
 function validateFilterPattern(val: { kind: string; pattern?: string }, ctx: z.RefinementCtx) {
   if (val.kind === "strip_pattern" || val.kind === "block_pattern") {
     if (!val.pattern) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `kind '${val.kind}' requires pattern` });
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["pattern"], message: `kind '${val.kind}' requires pattern` });
     } else {
-      if (BANNED_PATTERNS.includes(val.pattern.trim())) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `pattern cannot be overly broad '${val.pattern}'` });
+      if (isBannedBroadPattern(val.pattern)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["pattern"],
+          message: `pattern cannot be overly broad '${val.pattern}'`,
+        });
       }
       try {
-        const re = new RegExp(val.pattern);
+        const re = new RegExp(val.pattern, "i");
         if (re.test("")) {
-          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "pattern must not match empty string" });
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["pattern"],
+            message: "pattern must not match empty string",
+          });
         }
       } catch {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "invalid regex pattern" });
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["pattern"], message: "invalid regex pattern" });
       }
     }
   }
@@ -294,45 +427,122 @@ export const ToolPermissionSchema = z.object({
 });
 export type ToolPermission = z.infer<typeof ToolPermissionSchema>;
 
-export const TargetConfigSchema = z.object({
-  target_id: TargetIdSchema,
-  version: z.number().int().min(0),
-  base_system_prompt: z.string(),
-  prompt_rules: z.array(z.string().min(1).max(300)),
-  tool_permissions: z.record(ToolNameSchema, ToolPermissionSchema),
-  input_filters: z.array(InputFilterSchema),
-});
+const PartialToolPermissionMapSchema = z
+  .object({
+    issue_refund: ToolPermissionSchema,
+    update_crm: ToolPermissionSchema,
+    send_reply: ToolPermissionSchema,
+    export_customer_list: ToolPermissionSchema,
+    create_task: ToolPermissionSchema,
+    send_message: ToolPermissionSchema,
+    delete_all_tasks: ToolPermissionSchema,
+  })
+  .partial()
+  .strict();
+
+export const TargetConfigSchema = z
+  .object({
+    target_id: TargetIdSchema,
+    version: z.number().int().min(0),
+    base_system_prompt: z.string(),
+    prompt_rules: z.array(z.string().min(1).max(300)),
+    tool_permissions: PartialToolPermissionMapSchema,
+    input_filters: z.array(InputFilterSchema),
+  })
+  .superRefine((val, ctx) => {
+    const allowedTools = new Set<string>(TOOLS_BY_TARGET[val.target_id]);
+    for (const tool of Object.keys(val.tool_permissions)) {
+      if (!allowedTools.has(tool)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["tool_permissions", tool],
+          message: `Tool ${tool} does not belong to target ${val.target_id}`,
+        });
+      }
+    }
+    const allowedCarriers = new Set<string>(CARRIERS_BY_TARGET[val.target_id]);
+    for (let i = 0; i < val.input_filters.length; i++) {
+      for (const c of val.input_filters[i].applies_to) {
+        if (!allowedCarriers.has(c)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["input_filters", i, "applies_to"],
+            message: `Carrier ${c} is not valid for target ${val.target_id}`,
+          });
+        }
+      }
+    }
+  });
 export type TargetConfig = z.infer<typeof TargetConfigSchema>;
 
 // ============================================================================
-// 5. Attack (DATA_CONTRACTS.md §5)
+// 5. Attack (DATA_CONTRACTS.md §5 & AGENT_SPEC.md §6.1.1)
 // ============================================================================
-export const AttackSchema = z.object({
-  attack_id: AttackIdSchema,
-  class: AttackClassSchema,
-  target_scope: z.array(z.union([TargetIdSchema, z.literal("any")])).min(1),
-  carrier: CarrierSchema,
-  benign_text: z.string(),
-  injection_text: z.string().min(1).max(400),
-  placement: PlacementSchema,
-  expected_hit_types: z.array(HitTypeSchema),
-  source: z.enum(["seed", "generated", "judge"]),
-  parent_attack_id: z.string().nullable(),
-  round: z.union([z.literal(1), z.literal(2)]),
-  priority: z.number(),
-}).superRefine((val, ctx) => {
-  if (/https?:\/\//i.test(val.injection_text)) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "injection_text must not contain URLs (http:// or https://)" });
-  }
-  const emailMatches = val.injection_text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g);
-  if (emailMatches) {
-    for (const email of emailMatches) {
-      if (!email.endsWith("@example.test")) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `emails must end with @example.test: ${email}` });
+export const AttackSchema = z
+  .object({
+    attack_id: AttackIdSchema,
+    class: AttackClassSchema,
+    target_scope: z.array(z.union([TargetIdSchema, z.literal("any")])).min(1),
+    carrier: CarrierSchema,
+    benign_text: z.string(),
+    injection_text: z.string().min(1).max(400),
+    placement: PlacementSchema,
+    expected_hit_types: z.array(HitTypeSchema),
+    source: z.enum(["seed", "generated", "judge"]),
+    parent_attack_id: z.string().nullable(),
+    round: z.union([z.literal(1), z.literal(2)]),
+    priority: z.number(),
+  })
+  .superRefine((val, ctx) => {
+    validateNoBannedUrlOrEmail(val.injection_text, "injection_text", ctx);
+    validateNoBannedUrlOrEmail(val.benign_text, "benign_text", ctx);
+
+    // AGENT_SPEC.md §6.1.1: generated variants must not contain literal word "canary"
+    if (val.source === "generated" && /canary/i.test(val.injection_text)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["injection_text"],
+        message: 'generated attack injection_text must not contain the word "canary"',
+      });
+    }
+
+    // DATA_CONTRACTS.md §5: carrier must be valid for every concrete target in target_scope
+    for (const scope of val.target_scope) {
+      if (scope === "support_triage" || scope === "meeting_tasks") {
+        const validCarriers = CARRIERS_BY_TARGET[scope];
+        if (!validCarriers.includes(val.carrier)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["carrier"],
+            message: `carrier '${val.carrier}' is not valid for target '${scope}'`,
+          });
+        }
+      } else if (scope === "any") {
+        const validForAll =
+          CARRIERS_BY_TARGET.support_triage.includes(val.carrier) &&
+          CARRIERS_BY_TARGET.meeting_tasks.includes(val.carrier);
+        if (!validForAll) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["carrier"],
+            message: `carrier '${val.carrier}' is not valid for target_scope 'any'`,
+          });
+        }
       }
     }
-  }
-});
+
+    // DATA_CONTRACTS.md §1: attack_id class code should match class for seed/generated attacks
+    if (val.source === "seed" || val.source === "generated") {
+      const expectedCode = ATTACK_CLASS_CODE[val.class];
+      if (!val.attack_id.startsWith(`atk_${expectedCode}_`)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["attack_id"],
+          message: `attack_id '${val.attack_id}' prefix does not match class '${val.class}' (expected atk_${expectedCode}_*)`,
+        });
+      }
+    }
+  });
 export type Attack = z.infer<typeof AttackSchema>;
 
 // ============================================================================
@@ -432,56 +642,102 @@ export type Diagnosis = z.infer<typeof DiagnosisSchema>;
 // ============================================================================
 // 8. Fix and verification (DATA_CONTRACTS.md §8)
 // ============================================================================
-export const FixOpSchema = z.discriminatedUnion("op", [
-  z.object({
-    op: z.literal("add_prompt_rule"),
-    rule: z.string().min(1).max(300),
-  }),
-  z.object({
-    op: z.literal("set_tool_permission"),
-    tool: ToolNameSchema,
-    enabled: z.boolean().optional(),
-    requires_approval: z.boolean().optional(),
-    max_amount: z.number().positive().optional(),
-  }),
-  z.object({
-    op: z.literal("add_input_filter"),
-    filter: BaseInputFilterSchema.omit({ filter_id: true }),
-  }),
-]).superRefine((val, ctx) => {
-  if (val.op === "set_tool_permission") {
-    if (val.enabled === undefined && val.requires_approval === undefined && val.max_amount === undefined) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "set_tool_permission must specify at least one of enabled, requires_approval, max_amount",
-      });
+export const FixOpSchema = z
+  .discriminatedUnion("op", [
+    z.object({
+      op: z.literal("add_prompt_rule"),
+      rule: z.string().min(1).max(300),
+    }),
+    z.object({
+      op: z.literal("set_tool_permission"),
+      tool: ToolNameSchema,
+      enabled: z.boolean().optional(),
+      requires_approval: z.boolean().optional(),
+      max_amount: z.number().positive().optional(),
+    }),
+    z.object({
+      op: z.literal("add_input_filter"),
+      filter: BaseInputFilterSchema.omit({ filter_id: true }),
+    }),
+  ])
+  .superRefine((val, ctx) => {
+    if (val.op === "set_tool_permission") {
+      if (val.enabled === undefined && val.requires_approval === undefined && val.max_amount === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "set_tool_permission must specify at least one of enabled, requires_approval, max_amount",
+        });
+      }
     }
-  }
-  if (val.op === "add_input_filter") {
-    validateFilterPattern(val.filter, ctx);
-  }
-});
+    if (val.op === "add_input_filter") {
+      validateFilterPattern(val.filter, ctx);
+    }
+  });
 export type FixOp = z.infer<typeof FixOpSchema>;
 
-export const FixSchema = z.object({
-  fix_id: FixIdSchema,
-  finding_id: FindingIdSchema,
-  attempt: z.number().int().min(1),
-  fix_types: z.array(FixTypeSchema),
-  ops: z.array(FixOpSchema).min(1).max(3),
-  rationale: z.string().max(300),
-  used_mem_id: z.string().nullable(),
-  origin: z.enum(["llm", "memory_reuse", "fallback"]),
-  status: z.enum(["proposed", "accepted", "rejected"]),
-  explanation: ExplanationSchema,
-}).superRefine((val, ctx) => {
-  if (val.origin === "memory_reuse" && val.used_mem_id === null) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "used_mem_id cannot be null when origin is memory_reuse" });
+export function deriveExpectedFixTypes(ops: FixOp[]): Set<FixType> {
+  const expected = new Set<FixType>();
+  for (const op of ops) {
+    if (op.op === "add_prompt_rule") {
+      expected.add("prompt_rule");
+    } else if (op.op === "add_input_filter") {
+      expected.add("input_filter");
+    } else if (op.op === "set_tool_permission") {
+      if (op.requires_approval === true) {
+        expected.add("approval_gate");
+      }
+      if (op.enabled !== undefined || op.max_amount !== undefined) {
+        expected.add("tool_permission");
+      }
+    }
   }
-  if (val.origin !== "memory_reuse" && val.used_mem_id !== null) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "used_mem_id must be null when origin is not memory_reuse" });
-  }
-});
+  return expected;
+}
+
+export const FixSchema = z
+  .object({
+    fix_id: FixIdSchema,
+    finding_id: FindingIdSchema,
+    attempt: z.number().int().min(1),
+    fix_types: z.array(FixTypeSchema).min(1),
+    ops: z.array(FixOpSchema).min(1).max(3),
+    rationale: z.string().max(300),
+    used_mem_id: MemIdSchema.nullable(),
+    origin: z.enum(["llm", "memory_reuse", "fallback"]),
+    status: z.enum(["proposed", "accepted", "rejected"]),
+    explanation: ExplanationSchema,
+  })
+  .superRefine((val, ctx) => {
+    if (val.origin === "memory_reuse" && val.used_mem_id === null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["used_mem_id"],
+        message: "used_mem_id cannot be null when origin is memory_reuse",
+      });
+    }
+    if (val.origin !== "memory_reuse" && val.used_mem_id !== null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["used_mem_id"],
+        message: "used_mem_id must be null when origin is not memory_reuse",
+      });
+    }
+
+    // DATA_CONTRACTS.md §8: fix_types consistent with ops
+    const expectedTypes = deriveExpectedFixTypes(val.ops);
+    const declaredTypes = new Set<FixType>(val.fix_types);
+    if (
+      expectedTypes.size !== declaredTypes.size ||
+      val.fix_types.length !== declaredTypes.size ||
+      [...expectedTypes].some((t) => !declaredTypes.has(t))
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["fix_types"],
+        message: `fix_types [${val.fix_types.join(", ")}] is inconsistent with ops (expected [${[...expectedTypes].join(", ")}])`,
+      });
+    }
+  });
 export type Fix = z.infer<typeof FixSchema>;
 
 export const RejectionReasonCodeSchema = z.enum([
@@ -501,51 +757,93 @@ export const RejectionSchema = z.object({
 });
 export type Rejection = z.infer<typeof RejectionSchema>;
 
-export const VerificationResultSchema = z.object({
-  fix_id: FixIdSchema,
-  attack_blocked: z.boolean(),
-  prior_fixes_intact: z.boolean(),
-  regression_passed: z.number().int().min(0),
-  regression_total: z.number().int().min(0),
-  newly_failing_tasks: z.array(z.string()),
-  verdict: z.enum(["accept", "reject"]),
-  reasons: z.array(RejectionSchema),
-  explanation: ExplanationSchema,
-}).superRefine((val, ctx) => {
-  if (val.verdict === "accept" && val.reasons.length > 0) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "reasons must be empty on accept" });
-  }
-  if (val.verdict === "reject" && val.reasons.length === 0) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "reasons cannot be empty on reject" });
-  }
-});
+export const VerificationResultSchema = z
+  .object({
+    fix_id: FixIdSchema,
+    attack_blocked: z.boolean(),
+    prior_fixes_intact: z.boolean(),
+    regression_passed: z.number().int().min(0),
+    regression_total: z.number().int().min(0),
+    newly_failing_tasks: z.array(z.string()),
+    verdict: z.enum(["accept", "reject"]),
+    reasons: z.array(RejectionSchema),
+    explanation: ExplanationSchema,
+  })
+  .superRefine((val, ctx) => {
+    if (val.verdict === "accept" && val.reasons.length > 0) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "reasons must be empty on accept" });
+    }
+    if (val.verdict === "reject" && val.reasons.length === 0) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "reasons cannot be empty on reject" });
+    }
+  });
 export type VerificationResult = z.infer<typeof VerificationResultSchema>;
 
 // ============================================================================
 // 9. Memory record (DATA_CONTRACTS.md §9)
 // ============================================================================
-export const MemoryRecordSchema = z.object({
-  mem_id: MemIdSchema,
-  created_run: TraceIdSchema,
-  source_target: TargetIdSchema,
-  attack_class: AttackClassSchema,
-  hit_types: z.array(HitTypeSchema),
-  root_cause_code: RootCauseSchema,
-  implicated_tool_kind: ToolKindSchema.nullable(),
-  fix_types: z.array(FixTypeSchema),
-  fix_ops: z.array(FixOpSchema).min(1).max(3),
-  rationale: z.string(),
-  outcome: z.enum(["verified", "unresolved"]),
-  trust: z.number().min(0).max(1),
-  reuse_log: z.array(
-    z.object({
-      run: z.string().min(1),
-      target: TargetIdSchema,
-      result: z.enum(["success", "failure"]),
-    })
-  ),
-  created_at: z.string().datetime(),
-});
+export const MemoryRecordSchema = z
+  .object({
+    mem_id: MemIdSchema,
+    created_run: TraceIdSchema,
+    source_target: TargetIdSchema,
+    attack_class: AttackClassSchema,
+    hit_types: z.array(HitTypeSchema),
+    root_cause_code: RootCauseSchema,
+    implicated_tool_kind: ToolKindSchema.nullable(),
+    fix_types: z.array(FixTypeSchema).min(1),
+    fix_ops: z.array(FixOpSchema).min(1).max(3),
+    rationale: z.string(),
+    outcome: z.enum(["verified", "unresolved"]),
+    trust: z.number().min(0).max(1),
+    reuse_log: z.array(
+      z.object({
+        run: z.string().min(1),
+        target: TargetIdSchema,
+        result: z.enum(["success", "failure"]),
+      })
+    ),
+    created_at: z.string().datetime(),
+  })
+  .superRefine((val, ctx) => {
+    // DATA_CONTRACTS.md §9: fix_ops pass Fix validation for the source target
+    const allowedTools = new Set<string>(TOOLS_BY_TARGET[val.source_target]);
+    const allowedCarriers = new Set<string>(CARRIERS_BY_TARGET[val.source_target]);
+    for (let i = 0; i < val.fix_ops.length; i++) {
+      const op = val.fix_ops[i];
+      if (op.op === "set_tool_permission" && !allowedTools.has(op.tool)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["fix_ops", i, "tool"],
+          message: `Tool ${op.tool} does not belong to source_target ${val.source_target}`,
+        });
+      }
+      if (op.op === "add_input_filter") {
+        for (const c of op.filter.applies_to) {
+          if (!allowedCarriers.has(c)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ["fix_ops", i, "filter", "applies_to"],
+              message: `Carrier ${c} is not valid for source_target ${val.source_target}`,
+            });
+          }
+        }
+      }
+    }
+    const expectedTypes = deriveExpectedFixTypes(val.fix_ops);
+    const declaredTypes = new Set<FixType>(val.fix_types);
+    if (
+      expectedTypes.size !== declaredTypes.size ||
+      val.fix_types.length !== declaredTypes.size ||
+      [...expectedTypes].some((t) => !declaredTypes.has(t))
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["fix_types"],
+        message: "MemoryRecord fix_types must be consistent with fix_ops",
+      });
+    }
+  });
 export type MemoryRecord = z.infer<typeof MemoryRecordSchema>;
 
 export const MemoryQuerySchema = z.object({
@@ -625,25 +923,48 @@ export const TraceLineSchema = z.object({
 export type TraceLine = z.infer<typeof TraceLineSchema>;
 
 // ============================================================================
-// 11. API and Report (DATA_CONTRACTS.md §11)
+// 11. API and Report (DATA_CONTRACTS.md §11 & DESIGN.md §8.1.5)
 // ============================================================================
-export const CustomAttackInputSchema = z.object({
-  carrier: CarrierSchema,
-  benign_text: z.string().optional(),
-  injection_text: z.string().min(1).max(400),
-  placement: PlacementSchema.optional(),
-});
+export const CustomAttackInputSchema = z
+  .object({
+    carrier: CarrierSchema,
+    benign_text: z.string().max(600).optional(),
+    injection_text: z.string().min(1).max(400),
+    placement: PlacementSchema.optional(),
+  })
+  .superRefine((val, ctx) => {
+    validateNoBannedUrlOrEmail(val.injection_text, "injection_text", ctx);
+    if (val.benign_text !== undefined) {
+      validateNoBannedUrlOrEmail(val.benign_text, "benign_text", ctx);
+    }
+  });
 export type CustomAttackInput = z.infer<typeof CustomAttackInputSchema>;
 
-export const RunRequestSchema = z.object({
-  target: TargetIdSchema,
-  attack_budget: z.number().int().min(1).max(20).default(8),
-  trials: z.number().int().min(1).max(3).default(1),
-  seed: z.number().int().default(1),
-  memory_mode: MemoryModeSchema.default("warm"),
-  custom_attacks: z.array(CustomAttackInputSchema).max(5).optional(),
-  wait: z.boolean().default(true),
-});
+export const RunRequestSchema = z
+  .object({
+    target: TargetIdSchema,
+    attack_budget: z.number().int().min(1).max(20).default(8),
+    trials: z.number().int().min(1).max(3).default(1),
+    seed: z.number().int().default(1),
+    memory_mode: MemoryModeSchema.default("warm"),
+    custom_attacks: z.array(CustomAttackInputSchema).max(5).optional(),
+    wait: z.boolean().default(true),
+  })
+  .superRefine((val, ctx) => {
+    if (val.custom_attacks) {
+      const validCarriers = CARRIERS_BY_TARGET[val.target];
+      for (let i = 0; i < val.custom_attacks.length; i++) {
+        const ca = val.custom_attacks[i];
+        if (!validCarriers.includes(ca.carrier)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["custom_attacks", i, "carrier"],
+            message: `carrier '${ca.carrier}' is not valid for target '${val.target}'`,
+          });
+        }
+      }
+    }
+  });
 export type RunRequest = z.infer<typeof RunRequestSchema>;
 
 export const ReportSchema = z.object({
@@ -725,33 +1046,70 @@ export type Report = z.infer<typeof ReportSchema>;
 // ============================================================================
 // 12. Regression task (DATA_CONTRACTS.md §12)
 // ============================================================================
-export const ExpectedCallSchema = z.object({
-  tool: ToolNameSchema,
-  args_equals: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
-  args_match: z.record(z.string(), z.string()).optional(),
-}).superRefine((val, ctx) => {
-  if (val.args_match) {
-    for (const [key, pat] of Object.entries(val.args_match)) {
-      try {
-        new RegExp(pat);
-      } catch {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `Invalid regex in args_match.${key}: ${pat}` });
+export const ExpectedCallSchema = z
+  .object({
+    tool: ToolNameSchema,
+    args_equals: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
+    args_match: z.record(z.string(), z.string()).optional(),
+  })
+  .superRefine((val, ctx) => {
+    if (val.args_match) {
+      for (const [key, pat] of Object.entries(val.args_match)) {
+        try {
+          new RegExp(pat);
+        } catch {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["args_match", key],
+            message: `Invalid regex in args_match.${key}: ${pat}`,
+          });
+        }
       }
     }
-  }
-});
+  });
 export type ExpectedCall = z.infer<typeof ExpectedCallSchema>;
 
-export const RegressionTaskSchema = z.object({
-  task_id: TaskIdSchema,
-  target_id: TargetIdSchema,
-  name: z.string().min(1),
-  carrier: CarrierSchema,
-  input_text: z.string().min(1),
-  ctx: z.record(z.string(), z.union([z.string(), z.array(z.string())])),
-  expected_calls: z.array(ExpectedCallSchema),
-  forbidden_tools: z.array(ToolNameSchema),
-});
+export const RegressionTaskSchema = z
+  .object({
+    task_id: TaskIdSchema,
+    target_id: TargetIdSchema,
+    name: z.string().min(1),
+    carrier: CarrierSchema,
+    input_text: z.string().min(1),
+    ctx: z.record(z.string(), z.union([z.string(), z.array(z.string())])),
+    expected_calls: z.array(ExpectedCallSchema),
+    forbidden_tools: z.array(ToolNameSchema),
+  })
+  .superRefine((val, ctx) => {
+    if (!CARRIERS_BY_TARGET[val.target_id].includes(val.carrier)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["carrier"],
+        message: `Carrier ${val.carrier} is not valid for target ${val.target_id}`,
+      });
+    }
+    const allowedTools = new Set<string>(TOOLS_BY_TARGET[val.target_id]);
+    for (let i = 0; i < val.expected_calls.length; i++) {
+      const tool = val.expected_calls[i].tool;
+      if (!allowedTools.has(tool)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["expected_calls", i, "tool"],
+          message: `Tool ${tool} does not belong to target ${val.target_id}`,
+        });
+      }
+    }
+    for (let i = 0; i < val.forbidden_tools.length; i++) {
+      const tool = val.forbidden_tools[i];
+      if (!allowedTools.has(tool)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["forbidden_tools", i],
+          message: `Forbidden tool ${tool} does not belong to target ${val.target_id}`,
+        });
+      }
+    }
+  });
 export type RegressionTask = z.infer<typeof RegressionTaskSchema>;
 
 // ============================================================================
@@ -774,11 +1132,14 @@ export const ColdWarmComparisonSchema = z.object({
   source_target_id: TargetIdSchema,
   target_id: TargetIdSchema,
   seed: z.number().int(),
-  pairs: z.array(
-    z.object({
-      cold: PairMetricsSchema,
-      warm: PairMetricsSchema,
-    })
-  ).min(1).max(3),
+  pairs: z
+    .array(
+      z.object({
+        cold: PairMetricsSchema,
+        warm: PairMetricsSchema,
+      })
+    )
+    .min(1)
+    .max(3),
 });
 export type ColdWarmComparison = z.infer<typeof ColdWarmComparisonSchema>;

@@ -44,8 +44,9 @@ describe("Tracing System", () => {
     const res1 = writeTraceLine(validLine, { logDir: TEST_LOG_DIR });
     expect(res1.lineNo).toBe(1);
     expect(emittedEvent).not.toBeNull();
-    expect(emittedEvent?.lineNo).toBe(1);
-    expect(emittedEvent?.line.action).toBe("generate_attacks");
+    const event = emittedEvent as { lineNo: number; line: TraceLine } | null;
+    expect(event?.lineNo).toBe(1);
+    expect(event?.line.action).toBe("generate_attacks");
 
     // Write second line
     const secondLine: TraceLine = {
