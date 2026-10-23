@@ -13,3 +13,5 @@ One line per decision: date (UTC), who, decision, reason.
 - 2026-10-23 | Ayo & Agent | ESLint 9 Flat Config selected for project linting | Standard Next.js and TypeScript linting setup.
 - 2026-10-23 | Ayo & Agent | Zod 3.24.2 selected for runtime contract validation | Strict schema parsing matching DATA_CONTRACTS.md specifications.
 - 2026-10-23 | Ayo & Agent | Ports allocated to API (8000) and UI (3100) | Avoids collisions with Zetaris ports (3000, 8888, 10000) and Nightshift (8088).
+- 2026-10-23 | Ayo & Agent | Generator interface standardized on generator(role, messages, options) with Nightshift primary and NVIDIA fallback | Complies with Power rule and fallback requirements in README 12.
+- 2026-10-23 | Ayo & Agent | Meterless Nightshift 401 Unauthorized surfaced immediately without fallback | Prevents masking bad/expired credentials as network outages.

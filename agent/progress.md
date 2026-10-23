@@ -3,23 +3,21 @@
 ### Done
 - Step 0: Repository verification & folder reorganization (`.cursor/rules/`, `docs/`, `app/styles/`)
 - Baseline commit and push to `origin/main`
-- Switched to `feat/T-A1-scaffold`
-- Task T-A1: Scaffold, config, schemas, tracing (all criteria implemented)
-  - `package.json`, `tsconfig.json`, `.gitignore`, `eslint.config.mjs`
-  - Folder skeleton from README §10 with `.gitkeep` files
-  - `src/schemas.ts`: all DATA_CONTRACTS.md schemas & types with Zod
-  - `test/contract_examples/`: all example JSONs expanded and validated
-  - `src/config.ts`, `scripts/check-env.ts`, `.env.example`, `.env` check
-  - `src/tracing.ts`, EventEmitter, sequential 1-based numbering, canary masking
-  - `app/layout.tsx`, `app/page.tsx`, `app/styles/index.css`
-  - `docs/DECISIONS.md` initialized with all required baseline entries
-  - Tests passing: 35/35 in `test/schemas.test.ts`, `test/config.test.ts`, `test/tracing.test.ts`
+- Task T-A1: Scaffold, config, schemas, tracing (merged to `main`)
+- Task T-A2: LLM adapters and generator (`src/adapters/llm/`)
+  - `src/adapters/llm/meterless.ts`: Nightshift OpenAI-compatible client, headers (`meterless-app`, `meterless-scope`), 401 handling, model discovery
+  - `src/adapters/llm/nvidia.ts`: NVIDIA direct fallback client (`reasoning` and `fast` models)
+  - `src/adapters/llm/replay.ts`: Replay stub (stretch S-5)
+  - `src/adapters/llm/index.ts`: Unified `generator(role, messages)` with provider fallback, retries, and `llm_call`/`fallback_provider` tracing
+  - `docs/prompts_used/meterless_provider_prompt.md`: Organizers' provider prompt contract
+  - `test/llm_adapters.test.ts`: 5 tests verifying Nightshift calls, 401 surfacing, fallback to NVIDIA with `fallback_provider` trace, replay error, and zero-key grep check
+  - Tests passing: 73/73 across all 6 test suites
   - Linter passing: 0 errors
-  - `npm run check:env` verified (exit 0 on valid, exit 1 on missing var, no secret leaks)
+  - `npm run check:env` verified with model discovery
 
 ### Current
-- Task T-A1 Review & Commit: Staging clean files and opening PR
+- Task T-A2 Review & Commit: Opening PR to `main`
 
 ### Next
-- Task T-A2: LLM adapters and generator (`src/adapters/llm/`)
+- Task T-A3: Sandbox targets (`src/targets/support-triage/`, `meeting-tasks/`)
 
