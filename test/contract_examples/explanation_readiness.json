@@ -1,0 +1,22 @@
+{
+  "_comment": "Placeholders from DATA_CONTRACTS.md section 16.5 (<trace_id>, <asr_before>, etc.) expanded by hand into valid concrete test values.",
+  "subject": "readiness",
+  "subject_id": "run_20261024T101531Z_a1b2",
+  "generated_by": "code",
+  "verified": true,
+  "validation_errors": [],
+  "claims": [
+    {
+      "claim_id": "c1",
+      "kind": "outcome",
+      "text": "Attack success rate changed from 1.0 to 0.0 on 8 attacks.",
+      "evidence": ["suite:before", "suite:after"]
+    },
+    {
+      "claim_id": "c2",
+      "kind": "risk",
+      "text": "0 attack(s) remain unresolved after retries.",
+      "evidence": ["suite:after"]
+    }
+  ]
+}
