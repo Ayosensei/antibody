@@ -49,11 +49,9 @@ export function validatePortableSql(rawSql: string): void {
   }
 
   // 3. Strip single-quoted string literals to inspect SQL structure safely
-  // Matches '...', handling escaped '' inside
   const withoutStrings = withoutComments.replace(/'(?:''|[^'])*'/g, "''");
 
   // 4. Check for multiple statements (semicolons outside string literals)
-  // Allow an optional single trailing semicolon
   const strippedTrailingSemi = withoutStrings.replace(/;\s*$/, "");
   if (strippedTrailingSemi.includes(";")) {
     throw new InvalidSqlError("Multiple statements are not allowed in portable SQL");
@@ -71,7 +69,7 @@ export function validatePortableSql(rawSql: string): void {
     throw new InvalidSqlError("Subqueries are not allowed in portable SQL");
   }
 
-  // 6. Check for disallowed DDL, DML, JOINs, CTEs, set operations, window functions
+  // 7. Check for disallowed DDL, DML, JOINs, CTEs, set operations, window functions
   const joinMatch = strippedTrailingSemi.match(/\b(JOIN|INNER|LEFT|RIGHT|CROSS|NATURAL|FULL|OUTER)\b/i);
   if (joinMatch) {
     throw new InvalidSqlError(`JOIN operations ('${joinMatch[0].toUpperCase()}') are not allowed in portable SQL`);
@@ -94,7 +92,7 @@ export function validatePortableSql(rawSql: string): void {
     throw new InvalidSqlError(`Statement '${ddlMatch[0].toUpperCase()}' is not allowed in portable SQL`);
   }
 
-  // 7. Check for comma joins in FROM clause (e.g. FROM table1, table2 or FROM table1 AS t1, table2 AS t2)
+  // 8. Check for comma joins in FROM clause (e.g. FROM table1, table2 or FROM table1 AS t1, table2 AS t2)
   const fromClauseMatch = strippedTrailingSemi.match(
     /\bFROM\s+([\s\S]+?)(?:\bWHERE\b|\bGROUP\s+BY\b|\bORDER\s+BY\b|\bLIMIT\b|$)/i
   );
@@ -157,10 +155,43 @@ export function rowsToObjects<T = Record<string, unknown>>(res: SqlResult): T[] 
 }
 
 // ============================================================================
-// Local SQLite Database Manager
+// Local SQLite Database Manager with Statement & Signature Caching
 // ============================================================================
 
 let singletonDb: Database.Database | null = null;
+const stmtCache = new WeakMap<Database.Database, Map<string, Database.Statement>>();
+const refreshSigCache = new WeakMap<Database.Database, { traces?: string; fixes?: string }>();
+
+function computeDirSignature(dirPath: string, ext: string): string {
+  if (!fs.existsSync(dirPath)) return "empty";
+  const files = fs.readdirSync(dirPath).filter((f) => f.endsWith(ext)).sort();
+  if (files.length === 0) return "empty";
+  return files
+    .map((f) => {
+      try {
+        const stat = fs.statSync(path.join(dirPath, f));
+        return `${f}:${stat.mtimeMs}:${stat.size}`;
+      } catch {
+        return `${f}:0:0`;
+      }
+    })
+    .join("|");
+}
+
+export function getPreparedStatement(db: Database.Database, cleanSql: string): Database.Statement {
+  let map = stmtCache.get(db);
+  if (!map) {
+    map = new Map();
+    stmtCache.set(db, map);
+  }
+  let stmt = map.get(cleanSql);
+  if (!stmt) {
+    stmt = db.prepare(cleanSql);
+    stmt.raw(true);
+    map.set(cleanSql, stmt);
+  }
+  return stmt;
+}
 
 export function initLocalSchema(db: Database.Database): void {
   db.exec(`
@@ -267,6 +298,13 @@ export function seedLocalDatabase(db: Database.Database, sampleDir?: string): vo
 
 export function refreshTracesFromLogs(db: Database.Database, logDir?: string): void {
   const baseLogDir = logDir ?? path.resolve(process.cwd(), "logs");
+  const sig = computeDirSignature(baseLogDir, ".jsonl");
+  const cached = refreshSigCache.get(db) ?? {};
+  if (cached.traces === sig) return; // 0ms fast exit if directory unchanged
+
+  db.exec("DELETE FROM traces");
+  refreshSigCache.set(db, { ...cached, traces: sig });
+
   if (!fs.existsSync(baseLogDir)) return;
 
   const files = fs.readdirSync(baseLogDir).filter((f) => f.endsWith(".jsonl"));
@@ -274,8 +312,6 @@ export function refreshTracesFromLogs(db: Database.Database, logDir?: string): v
     INSERT INTO traces (trace_id, ts, agent_name, action, status, retry_count, target_id)
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
-
-  db.exec("DELETE FROM traces");
 
   const insertAll = db.transaction(() => {
     for (const file of files) {
@@ -305,9 +341,14 @@ export function refreshTracesFromLogs(db: Database.Database, logDir?: string): v
 }
 
 export function refreshFixesFromMemory(db: Database.Database, memoryDir?: string): void {
-  db.exec("DELETE FROM fixes");
-
   const baseMemoryDir = memoryDir ?? path.resolve(process.cwd(), "data/memory");
+  const sig = computeDirSignature(baseMemoryDir, ".json");
+  const cached = refreshSigCache.get(db) ?? {};
+  if (cached.fixes === sig) return; // 0ms fast exit if directory unchanged
+
+  db.exec("DELETE FROM fixes");
+  refreshSigCache.set(db, { ...cached, fixes: sig });
+
   if (!fs.existsSync(baseMemoryDir)) return;
 
   const files = fs.readdirSync(baseMemoryDir).filter((f) => f.endsWith(".json"));
@@ -411,7 +452,8 @@ export function runLocalSql(sql: string, opts?: RunLocalSqlOptions): SqlResult {
     cleanSql += ` LIMIT ${opts.limit}`;
   }
 
-  const stmt = db.prepare(cleanSql);
+  // Use prepared statement cache (Optimization 3)
+  const stmt = getPreparedStatement(db, cleanSql);
   let columns = stmt.columns().map((c) => c.name);
 
   if (columns.length === 0) {
@@ -421,18 +463,22 @@ export function runLocalSql(sql: string, opts?: RunLocalSqlOptions): SqlResult {
     }
   }
 
-  const rawRows = stmt.raw(true).all() as unknown[][];
+  const rawRows = stmt.all() as unknown[][];
 
   // SQLite Boolean coercion: convert 1/0 in 'allowed' column to boolean true/false
+  // Optimization 2: Skip row cloning if allowed column is not present
   const allowedColIndex = columns.indexOf("allowed");
-  const rows = rawRows.map((row) => {
-    if (allowedColIndex !== -1 && row[allowedColIndex] !== undefined) {
-      const copy = [...row];
-      copy[allowedColIndex] = copy[allowedColIndex] === 1 || copy[allowedColIndex] === true;
-      return copy;
-    }
-    return row;
-  });
+  const rows =
+    allowedColIndex === -1
+      ? rawRows
+      : rawRows.map((row) => {
+          if (row[allowedColIndex] !== undefined) {
+            const copy = [...row];
+            copy[allowedColIndex] = copy[allowedColIndex] === 1 || copy[allowedColIndex] === true;
+            return copy;
+          }
+          return row;
+        });
 
   return {
     columns,

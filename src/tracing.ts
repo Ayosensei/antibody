@@ -10,9 +10,32 @@ export const traceEmitter = new EventEmitter();
 // Maintain in-memory line counter per trace_id to ensure 1-based strictly increasing sequence
 const traceLineCounters = new Map<string, number>();
 
+// Performance cache for compiled canary regexes and verified directories
+const GENERIC_CANARY_RE = /canary[\s\-_]+[a-z]+[\s\-_]+[0-9a-f]{4,}/gi;
+const canaryRegexCache = new Map<string, RegExp>();
+const ensuredLogDirs = new Set<string>();
+
 export interface TraceWriteOptions {
   logDir?: string;
   canaryKey?: string;
+}
+
+function getNormalizedCanaryRegex(canaryKey: string): RegExp | null {
+  let cached = canaryRegexCache.get(canaryKey);
+  if (cached) return cached;
+
+  const normChars = canaryKey
+    .toLowerCase()
+    .replace(/[\s\-_]+/g, "")
+    .split("");
+  if (normChars.length === 0) return null;
+
+  const pattern = normChars
+    .map((ch) => ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("[\\s\\-_]*");
+  cached = new RegExp(pattern, "gi");
+  canaryRegexCache.set(canaryKey, cached);
+  return cached;
 }
 
 /**
@@ -23,29 +46,21 @@ export function maskCanary(text: string, canaryKey?: string): string {
   if (!text) return text;
   let masked = text;
   if (canaryKey && canaryKey.trim() !== "") {
-    // 1. Exact match replacement
-    masked = masked.split(canaryKey).join("CANARY-***");
-    // 2. Normalized match replacement (case-insensitive, optional whitespace / '-' / '_' between chars)
-    const normChars = canaryKey
-      .toLowerCase()
-      .replace(/[\s\-_]+/g, "")
-      .split("");
-    if (normChars.length > 0) {
-      const pattern = normChars
-        .map((ch) => ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-        .join("[\\s\\-_]*");
-      masked = masked.replace(new RegExp(pattern, "gi"), "CANARY-***");
+    if (masked.includes(canaryKey)) {
+      masked = masked.split(canaryKey).join("CANARY-***");
+    }
+    const normRe = getNormalizedCanaryRegex(canaryKey);
+    if (normRe) {
+      masked = masked.replace(normRe, "CANARY-***");
     }
   }
-  // 3. Catch any general CANARY-<PREFIX>-<HEX> even if canaryKey wasn't passed
-  masked = masked.replace(/canary[\s\-_]+[a-z]+[\s\-_]+[0-9a-f]{4,}/gi, "CANARY-***");
-  return masked;
+  return masked.replace(GENERIC_CANARY_RE, "CANARY-***");
 }
 
 /**
  * Recursively mask canary values in an object's string fields.
  */
-function maskObjectStrings<T>(obj: T, canaryKey?: string): T {
+export function maskObjectStrings<T>(obj: T, canaryKey?: string): T {
   if (typeof obj === "string") {
     return maskCanary(obj, canaryKey) as unknown as T;
   }
@@ -75,8 +90,13 @@ export function getNextLineNo(traceId: string): number {
 /**
  * Resets the line counter for a trace_id (useful in testing).
  */
-export function resetTraceCounter(traceId: string): void {
-  traceLineCounters.delete(traceId);
+export function resetTraceCounter(traceId?: string): void {
+  if (traceId) {
+    traceLineCounters.delete(traceId);
+  } else {
+    traceLineCounters.clear();
+  }
+  ensuredLogDirs.clear();
 }
 
 /**
@@ -101,16 +121,24 @@ export function writeTraceLine(
     }
   }
 
-  // 2. Apply canary masking before validation & write
-  const maskedLine = maskObjectStrings(rawLine, canary);
+  // 2. Fast targeted masking (skips timestamp, trace_id, agent_name, action, status enums)
+  const maskedLine: TraceLine = {
+    ...rawLine,
+    input_summary: maskCanary(rawLine.input_summary, canary),
+    output_summary: maskCanary(rawLine.output_summary, canary),
+    ...(rawLine.meta ? { meta: maskObjectStrings(rawLine.meta, canary) } : {}),
+  };
 
   // 3. Runtime validation against TraceLineSchema
   const validatedLine = TraceLineSchema.parse(maskedLine);
 
-  // 4. Ensure target directory exists
+  // 4. Ensure target directory exists (cached check)
   const resolvedLogDir = path.resolve(process.cwd(), logDir);
-  if (!fs.existsSync(resolvedLogDir)) {
-    fs.mkdirSync(resolvedLogDir, { recursive: true });
+  if (!ensuredLogDirs.has(resolvedLogDir)) {
+    if (!fs.existsSync(resolvedLogDir)) {
+      fs.mkdirSync(resolvedLogDir, { recursive: true });
+    }
+    ensuredLogDirs.add(resolvedLogDir);
   }
 
   // 5. Track 1-based line number
