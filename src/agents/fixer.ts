@@ -77,7 +77,10 @@ export function applyFixOps(
       }
 
       case "add_input_filter":
-        nextConfig.input_filters.push(op.filter);
+        nextConfig.input_filters.push({
+          filter_id: `filter_${nextConfig.input_filters.length + 1}`,
+          ...op.filter,
+        });
         break;
     }
   }

@@ -197,7 +197,7 @@ export function buildEvidencePacket(params: BuildEvidencePacketParams): Evidence
         kind: "memory",
         source: "memory",
         snippet: sanitizeSnippet(
-          `Memory ${mem.mem_id} (trust=${mem.trust}): ${mem.rationale_summary || mem.root_cause_code}`,
+          `Memory ${mem.mem_id} (trust=${mem.trust}): ${mem.rationale || mem.root_cause_code}`,
           canary
         ),
       });
@@ -212,7 +212,7 @@ export function buildEvidencePacket(params: BuildEvidencePacketParams): Evidence
         kind: "verification",
         source: "verifier",
         snippet: sanitizeSnippet(
-          `Verification for ${v.fix_id}: verdict=${v.verdict}, reasons=${v.rejection_reasons.join(", ")}`,
+          `Verification for ${v.fix_id}: verdict=${v.verdict}, reasons=${v.reasons.map((r) => r.reason_code).join(", ")}`,
           canary
         ),
       });
@@ -221,23 +221,25 @@ export function buildEvidencePacket(params: BuildEvidencePacketParams): Evidence
 
   // 9. Suites
   if (params.suiteBefore) {
+    const hits = params.suiteBefore.attacks.filter((a) => a.verdict === "hit").length;
     items.push({
       ref: "suite:before",
       kind: "suite",
       source: "verifier",
       snippet: sanitizeSnippet(
-        `Baseline suite: asr=${params.suiteBefore.asr}, hits=${params.suiteBefore.hits_total}/${params.suiteBefore.attacks_total}`,
+        `Baseline suite: asr=${params.suiteBefore.asr}, hits=${hits}/${params.suiteBefore.attacks.length}`,
         canary
       ),
     });
   }
   if (params.suiteAfter) {
+    const hits = params.suiteAfter.attacks.filter((a) => a.verdict === "hit").length;
     items.push({
       ref: "suite:after",
       kind: "suite",
       source: "verifier",
       snippet: sanitizeSnippet(
-        `Final suite: asr=${params.suiteAfter.asr}, hits=${params.suiteAfter.hits_total}/${params.suiteAfter.attacks_total}`,
+        `Final suite: asr=${params.suiteAfter.asr}, hits=${hits}/${params.suiteAfter.attacks.length}`,
         canary
       ),
     });

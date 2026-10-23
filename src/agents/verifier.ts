@@ -175,7 +175,7 @@ export async function verifyFix(params: VerifyFixParams): Promise<VerificationRe
 
   let regressionPassedCount = 0;
   for (const task of params.regressionTasks) {
-    const canary = generateCanary(params.policy.canary_prefix, seed, 1);
+    const canary = generateCanary(params.policy.canary_prefix, seed, String(task.task_id));
     const run = await executeTarget({
       targetId: params.policy.target_id,
       regressionTask: task,
@@ -327,7 +327,7 @@ export async function runFinalVerification(params: FinalVerifyParams): Promise<S
   let regressionPassedCount = 0;
 
   for (const task of params.regressionTasks) {
-    const canary = generateCanary(params.policy.canary_prefix, seed, 1);
+    const canary = generateCanary(params.policy.canary_prefix, seed, String(task.task_id));
     const run = await executeTarget({
       targetId: params.targetId,
       regressionTask: task,

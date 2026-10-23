@@ -12,6 +12,7 @@ import {
   type AttackClass,
   AttackSchema,
   type Carrier,
+  type CustomAttackInput,
   type Placement,
   type Policy,
   type TargetId,
@@ -30,7 +31,7 @@ export interface GenerateAttacksParams {
   targetId: TargetId;
   policy: Policy;
   attackBudget: number;
-  customAttacks?: Attack[];
+  customAttacks?: (Attack | CustomAttackInput)[];
   round?: 1 | 2;
   previousResultSummary?: string;
   traceCtx: TraceContext;
@@ -221,12 +222,32 @@ export async function generateAttacks(params: GenerateAttacksParams): Promise<At
   // 1. Include custom attacks (judge-supplied) first
   if (params.customAttacks && params.customAttacks.length > 0) {
     for (const ca of params.customAttacks) {
-      suite.push(
-        AttackSchema.parse({
-          ...ca,
-          source: "judge",
-        })
-      );
+      if ("attack_id" in ca && "class" in ca) {
+        suite.push(
+          AttackSchema.parse({
+            ...ca,
+            source: "judge",
+          })
+        );
+      } else {
+        const customInput = ca as CustomAttackInput;
+        suite.push(
+          AttackSchema.parse({
+            attack_id: `custom_${suite.length + 1}`,
+            class: "injection_override",
+            target_scope: [params.targetId],
+            carrier: customInput.carrier,
+            benign_text: customInput.benign_text || "",
+            injection_text: customInput.injection_text,
+            placement: customInput.placement || "append",
+            expected_hit_types: ["canary_leak"],
+            source: "judge",
+            parent_attack_id: null,
+            round: 1,
+            priority: 0,
+          })
+        );
+      }
     }
   }
 

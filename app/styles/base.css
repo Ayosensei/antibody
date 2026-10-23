@@ -1,0 +1,105 @@
+/**
+ * Base styles and reset for Antibody.
+ * Docs: docs/DESIGN.md §3.4, §10, §14.2.
+ */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-family: var(--ab-font-text);
+  color-scheme: dark;
+  background-color: var(--ab-bg);
+  color: var(--ab-text);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  background-color: var(--ab-bg);
+  background-image: var(--ab-page-light);
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  color: var(--ab-text);
+  min-height: 100vh;
+  line-height: 1.5;
+  font-size: var(--ab-fs-body);
+}
+
+/* Skip link for accessibility (DESIGN §10) */
+.ab-skip-link {
+  position: absolute;
+  top: -999px;
+  left: 16px;
+  background: var(--ab-s3);
+  color: var(--ab-text);
+  padding: 8px 16px;
+  border-radius: var(--ab-r-pill);
+  border: 1px solid var(--ab-focus);
+  z-index: var(--ab-z-nav);
+  text-decoration: none;
+  font-size: var(--ab-fs-small);
+}
+.ab-skip-link:focus {
+  top: 16px;
+  outline: 2px solid var(--ab-focus);
+  outline-offset: 3px;
+}
+
+/* Focus ring (DESIGN §10) */
+:focus-visible {
+  outline: 2px solid var(--ab-focus);
+  outline-offset: 3px;
+}
+
+/* Reduced motion (DESIGN §3.9) */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+input, textarea, select {
+  font: inherit;
+  color: inherit;
+}
+
+p {
+  max-width: 70ch;
+}
+
+code, pre {
+  font-family: var(--ab-font-mono);
+}
+
+/* Visually hidden utility for screen readers */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

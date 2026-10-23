@@ -1,0 +1,512 @@
+/**
+ * Component styles for Antibody.
+ * BEM class names with ab- prefix.
+ * Docs: docs/DESIGN.md §3.3, §4, §8, §14.2.
+ */
+
+/* 1. Surfaces (DESIGN §3.3) */
+.ab-plate {
+  background-color: var(--ab-s1);
+  border-radius: var(--ab-r-plate);
+  border: 1px solid transparent;
+  background-image: linear-gradient(var(--ab-s1), var(--ab-s1)), var(--ab-chrome-edge);
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+  box-shadow: var(--ab-shadow-plate);
+  padding: 24px;
+}
+
+@media (min-width: 640px) {
+  .ab-plate {
+    padding: 32px;
+  }
+}
+
+.ab-row {
+  background-color: var(--ab-s1);
+  border-radius: var(--ab-r-row);
+  border: 1px solid var(--ab-line);
+  padding: 16px 20px;
+  transition: border-color var(--ab-dur-1) var(--ab-ease), background var(--ab-dur-1) var(--ab-ease);
+}
+
+.ab-row:hover {
+  border-color: var(--ab-line-strong);
+  background-color: var(--ab-s2);
+}
+
+.ab-inlay {
+  background-color: var(--ab-s2);
+  border-radius: var(--ab-r-inlay);
+  border: 1px solid var(--ab-line);
+  padding: 16px;
+  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.5);
+}
+
+.ab-field {
+  background-color: var(--ab-s2);
+  border-radius: var(--ab-r-field);
+  border: 1px solid var(--ab-line-strong);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5);
+  padding: 10px 14px;
+  color: var(--ab-text);
+  font-size: var(--ab-fs-body);
+  transition: border-color var(--ab-dur-1) var(--ab-ease);
+}
+
+.ab-field:focus {
+  border-color: var(--ab-focus);
+}
+
+/* 2. Buttons (DESIGN §4.1) */
+.ab-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: var(--ab-r-pill);
+  font-family: var(--ab-font-text);
+  font-weight: 500;
+  font-size: var(--ab-fs-body);
+  padding: 12px 24px;
+  cursor: pointer;
+  transition: transform var(--ab-dur-1) var(--ab-ease), box-shadow var(--ab-dur-1) var(--ab-ease), background var(--ab-dur-1) var(--ab-ease);
+  user-select: none;
+}
+
+.ab-btn:active {
+  transform: scale(0.98);
+}
+
+.ab-btn--primary {
+  background: var(--ab-lime);
+  color: var(--ab-text-on-lime);
+  box-shadow: var(--ab-shadow-lime);
+  font-weight: 600;
+}
+
+.ab-btn--primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.ab-btn--primary:disabled {
+  background: var(--ab-disabled-fill);
+  color: var(--ab-text-3);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.ab-btn--secondary {
+  background: var(--ab-s2);
+  color: var(--ab-text);
+  border: 1px solid var(--ab-line);
+  box-shadow: var(--ab-shadow-pill);
+}
+
+.ab-btn--secondary:hover:not(:disabled) {
+  background: var(--ab-s3);
+  border-color: var(--ab-line-strong);
+}
+
+.ab-btn--ghost {
+  background: transparent;
+  color: var(--ab-text-2);
+}
+
+.ab-btn--ghost:hover:not(:disabled) {
+  color: var(--ab-text);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.ab-btn--small {
+  padding: 6px 14px;
+  font-size: var(--ab-fs-small);
+}
+
+/* 3. Chips and Badges (DESIGN §4.2, §4.3) */
+.ab-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--ab-r-pill);
+  padding: 4px 10px;
+  font-size: var(--ab-fs-small);
+  color: var(--ab-text-2);
+  background: var(--ab-s2);
+  border: 1px solid var(--ab-line);
+  cursor: pointer;
+  transition: all var(--ab-dur-1) var(--ab-ease);
+}
+
+.ab-chip:hover {
+  color: var(--ab-text);
+  border-color: var(--ab-line-strong);
+}
+
+.ab-chip--selected {
+  background: var(--ab-s3);
+  color: var(--ab-text);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.ab-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: var(--ab-fs-caption);
+  font-weight: 500;
+  border: 1px solid var(--ab-line);
+}
+
+.ab-tag--ok {
+  background: var(--ab-lime-tint);
+  border-color: var(--ab-lime);
+  color: var(--ab-lime);
+}
+
+.ab-tag--bad {
+  background: var(--ab-ember-tint);
+  border-color: var(--ab-ember);
+  color: var(--ab-ember);
+}
+
+.ab-tag--warn {
+  background: var(--ab-amber-tint);
+  border-color: var(--ab-amber);
+  color: var(--ab-amber);
+}
+
+.ab-tag--info {
+  background: var(--ab-ice-tint);
+  border-color: var(--ab-ice);
+  color: var(--ab-ice);
+}
+
+/* 4. Target Selection Card (DESIGN §4.4, §8.1) */
+.ab-target-card {
+  background: var(--ab-s1);
+  border-radius: var(--ab-r-card);
+  border: 1px solid var(--ab-line);
+  padding: 24px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: all var(--ab-dur-2) var(--ab-ease);
+}
+
+.ab-target-card:hover {
+  border-color: var(--ab-line-strong);
+  background: var(--ab-s2);
+}
+
+.ab-target-card--selected {
+  border-color: var(--ab-lime);
+  background: var(--ab-s2);
+  box-shadow: 0 0 0 1px var(--ab-lime), 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.ab-target-card__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ab-target-card__icon-disc {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--ab-silver);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #07080b;
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.ab-target-card__title {
+  font-family: var(--ab-font-display);
+  font-weight: 500;
+  font-size: 18px;
+  color: var(--ab-text);
+}
+
+.ab-target-card__desc {
+  font-size: var(--ab-fs-small);
+  color: var(--ab-text-2);
+  line-height: 1.5;
+}
+
+/* 5. Stage Tracker (DESIGN §4.5, §8.2.2) */
+.ab-stage-tracker {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 16px;
+  background: var(--ab-s2);
+  border-radius: var(--ab-r-inlay);
+  border: 1px solid var(--ab-line);
+}
+
+.ab-stage-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--ab-fs-caption);
+  color: var(--ab-text-3);
+  white-space: nowrap;
+}
+
+.ab-stage-step--done {
+  color: var(--ab-text-2);
+}
+
+.ab-stage-step--current {
+  color: var(--ab-text);
+  font-weight: 600;
+}
+
+.ab-stage-disc {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--ab-s3);
+  border: 1px solid var(--ab-line);
+}
+
+.ab-stage-step--done .ab-stage-disc {
+  background: var(--ab-silver);
+  color: #07080b;
+  border: none;
+}
+
+.ab-stage-step--current .ab-stage-disc {
+  background: var(--ab-lime);
+  color: var(--ab-text-on-lime);
+  border: none;
+  box-shadow: 0 0 12px var(--ab-lime);
+}
+
+/* 6. Readiness Plate & Medal (DESIGN §3.2, §8.3) */
+.ab-readiness-plate {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  position: relative;
+}
+
+.ab-readiness-plate__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.ab-readiness-plate__title-group {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.ab-readiness-plate__title {
+  font-size: var(--ab-fs-h2);
+  line-height: var(--ab-lh-h2);
+  font-weight: 500;
+  color: var(--ab-text-1);
+  margin: 0;
+}
+
+.ab-readiness-plate__summary {
+  font-size: var(--ab-fs-body-lg);
+  line-height: var(--ab-lh-body-lg);
+  color: var(--ab-text-2);
+  margin: 0;
+}
+
+.ab-readiness-plate__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ab-readiness-plate--gold {
+  border-color: #ebc862;
+  box-shadow: 0 0 32px rgba(235, 200, 98, 0.15);
+}
+
+.ab-readiness-plate--silver {
+  border-color: #cdd3dd;
+  box-shadow: 0 0 32px rgba(205, 211, 221, 0.12);
+}
+
+.ab-readiness-plate--bronze {
+  border-color: #d09566;
+  box-shadow: 0 0 32px rgba(208, 149, 102, 0.15);
+}
+
+.ab-medal {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+.ab-medal--gold { background: var(--ab-gold); color: #2e2004; }
+.ab-medal--silver { background: var(--ab-silver); color: #1a1e27; }
+.ab-medal--bronze { background: var(--ab-bronze); color: #2e1604; }
+
+/* 7. Metric Card (DESIGN §4.4) */
+.ab-metric-card {
+  background: var(--ab-s1);
+  border: 1px solid var(--ab-line);
+  border-radius: var(--ab-r-card);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ab-metric-card__label {
+  font-size: var(--ab-fs-caption);
+  color: var(--ab-text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ab-metric-card__value {
+  font-family: var(--ab-font-display);
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--ab-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.ab-metric-card__sub {
+  font-size: var(--ab-fs-caption);
+  color: var(--ab-text-2);
+}
+
+.ab-metric-card--attention {
+  border-color: var(--ab-ember);
+  background: rgba(230, 92, 58, 0.05);
+}
+
+/* 8. Trace Panel (DESIGN §8.2) */
+.ab-trace-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 480px;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.ab-trace-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: var(--ab-r-chip-sq);
+  background: var(--ab-s1);
+  border: 1px solid var(--ab-line);
+  font-size: var(--ab-fs-caption);
+}
+
+.ab-trace-row--rejected {
+  border: 2px solid var(--ab-ember);
+}
+
+.ab-trace-row--ember {
+  border-left: 3px solid var(--ab-ember) !important;
+}
+
+.ab-trace-row--amber {
+  border-left: 3px solid var(--ab-amber) !important;
+}
+
+.ab-agent-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.ab-agent-dot--Attacker { background: var(--ab-agent-attacker); }
+.ab-agent-dot--Judge { background: var(--ab-agent-judge); }
+.ab-agent-dot--Diagnoser { background: var(--ab-agent-diagnoser); }
+.ab-agent-dot--Memory { background: var(--ab-agent-memory); }
+.ab-agent-dot--Fixer { background: var(--ab-agent-fixer); }
+.ab-agent-dot--Verifier { background: var(--ab-agent-verifier); }
+.ab-agent-dot--System { background: var(--ab-agent-system); }
+
+/* 9. Live Scan Line (DESIGN §3.9) */
+.ab-scan-line {
+  height: 2px;
+  background: var(--ab-ice);
+  box-shadow: 0 0 8px var(--ab-ice);
+  width: 100%;
+}
+
+/* 10. Evidence Chip (DESIGN §4.10) */
+.ab-evidence-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: var(--ab-s3);
+  border: 1px solid var(--ab-line-strong);
+  border-radius: var(--ab-r-chip-sq);
+  font-family: var(--ab-font-mono);
+  font-size: var(--ab-fs-mono-s);
+  color: var(--ab-ice);
+  cursor: pointer;
+}
+
+.ab-evidence-chip:hover {
+  background: rgba(127, 178, 255, 0.15);
+  border-color: var(--ab-ice);
+}
+
+/* 11. Banners (DESIGN §4.9) */
+.ab-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 18px;
+  border-radius: var(--ab-r-inlay);
+  font-size: var(--ab-fs-small);
+  line-height: 1.5;
+}
+
+.ab-banner--warn {
+  background: var(--ab-amber-tint);
+  border: 1px solid var(--ab-amber);
+  color: #ffd166;
+}
+
+.ab-banner--bad {
+  background: var(--ab-ember-tint);
+  border: 1px solid var(--ab-ember);
+  color: #ff9985;
+}
+
+.ab-banner--ok {
+  background: var(--ab-lime-tint);
+  border: 1px solid var(--ab-lime);
+  color: var(--ab-lime);
+}

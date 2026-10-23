@@ -8,24 +8,25 @@
 - Task T-A3: Sandbox targets (`src/targets/support-triage/`, `meeting-tasks/`)
 - Task T-A4: Deterministic judge (`src/judge/`)
 - Task T-A5: Graph and agents state machine (`src/agents/`, `src/explain/`, `src/orchestration/`) (merged to `main`)
-- Task T-A6: API Server & Report Builder (`src/server.ts`, `src/report/`)
-  - `src/server.ts`: HTTP server on port 8000 per AGENTS.md and DATA_CONTRACTS.md §11 & §13
-    - `POST /run`: sync (wait: true) returning 200 `Report` and async (wait: false) returning 202 `{ trace_id }`
-    - `GET /runs/:id`: 200 `Report` when finished, 202 `{ status: "running", started_at, request, last_trace_line }` while running, 500 failed, 404 `unknown_run`
-    - `GET /runs/:id/events`: Server-Sent Events stream with `Last-Event-ID` replay, keepalive (`: keepalive`), and final `event: end`
-    - `GET /health`: `{ ok: true, sample_mode, llm_provider, zetaris }`
-    - `GET /memory`: list stored MemoryRecords
-    - `POST /memory/reset`: reset memory requiring `X-Confirm: reset` header
-    - `/zetaris-sources/*`: flat column tables (`attacks`, `policies`, `traces`, `fixes`)
-    - CORS headers for `http://localhost:3100` and `http://127.0.0.1:3100`
-  - `src/report/html.ts`: standalone HTML report generator with DESIGN S2b section order (readiness plate, medal, metrics, findings, guardrail diff, remaining risks, memory, evidence map)
-  - `test/server.test.ts`: 21 tests covering all endpoints, error codes, SSE streaming, and validation
-  - Tests passing: 175/175 across all 11 test suites
-  - Linter passing: 0 errors
+- Task T-A6: API Server & Report Builder (`src/server.ts`, `src/report/`) (merged to `main`)
+- Task T-A7: UI Level L1 per DESIGN.md (`app/`)
+  - Semantic CSS architecture (`app/styles/`): tokens, base, metal, layout, components, index. Dark theme `#07080B`, chrome hairline, medal rims, stage discs, trace rows with ember/amber accents.
+  - Complete copy deck (`app/copy.ts`) keyed to DESIGN.md §11 (no inline English strings).
+  - Utility libraries (`app/lib/`): API client (`api.ts`), plain-language labels (`labels.ts`), formatting (`format.ts`), recent runs (`recent.ts`), stage tracker logic (`stage.ts`), evidence parser (`evidence.ts`), and SSE run state machine hook (`useRun.ts`).
+  - Modular UI components (`app/components/`): `Icons`, `Nav`, `StageTracker`, `Medal`, `ReadinessPlate`, `MetricCard`, `EvidenceChip`, `ExplanationPanel`, `AttemptCard`, `FindingPanel`, `GuardrailDiff`, `TracePanel`, `ProgressPanel`.
+  - Next.js Pages:
+    - S1 Launcher (`app/page.tsx`): 2-line metal headline, health status badges, target cards, attack stepper, memory mode segmented control, custom attack fields, primary button, recent runs.
+    - S2 / S2b Live Run View & Report Container (`app/runs/[traceId]/page.tsx`): Live stage tracker, progress panel, live trace panel, and upon run completion, S2b report with readiness plate, medal, metrics, findings, guardrail diff, explanations with clickable evidence chips, and memory.
+    - S5 404 Page (`app/not-found.tsx`): Custom 404 with back navigation.
+  - Verification:
+    - `next build`: compiled cleanly with 0 type errors.
+    - `npm run test`: 11 passed (11 files), 175 passed (175 tests).
+    - `npm run lint`: 0 errors.
+    - `npm run check:env`: OK.
 
 ### Current
-- Task T-A6 Complete. Merging to `main` and starting Task T-A7 (UI Level L1).
+- Task T-A7 Complete. Autonomous execution of tasks T-A5 through T-A7 concluded.
 
 ### Next
-- Task T-A7: UI Level L1 per DESIGN.md
+- Task T-A8 / Level L2 UI enhancements or hackathon evaluation runs.
 

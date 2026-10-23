@@ -31,7 +31,9 @@ export async function generator(
 ): Promise<GeneratorResult> {
   const cfg = configOverride || loadConfig();
   const provider = options?.providerOverride || cfg.llm_provider || "meterless";
-  const traceId = options?.traceId || createFallbackTraceId();
+  const traceId = options?.traceContext?.traceId || options?.traceId || createFallbackTraceId();
+  const traceLogDir = options?.traceContext?.logDir || options?.logDir || cfg.log_dir;
+  const traceCanaryKey = options?.traceContext?.canaryKey || options?.canaryKey || cfg.canary_key;
   const maxRetries = cfg.max_retries ?? 2;
 
   if (provider === "replay") {
@@ -57,7 +59,7 @@ export async function generator(
             retry_count: attempt,
             status: "success",
           },
-          { logDir: cfg.log_dir, canaryKey: cfg.canary_key }
+          { logDir: traceLogDir, canaryKey: traceCanaryKey }
         );
         return res;
       } catch (err: unknown) {
@@ -88,7 +90,7 @@ export async function generator(
           retry_count: attempt,
           status: "success",
         },
-        { logDir: cfg.log_dir, canaryKey: cfg.canary_key }
+        { logDir: traceLogDir, canaryKey: traceCanaryKey }
       );
       return res;
     } catch (err: unknown) {
@@ -118,7 +120,7 @@ export async function generator(
       retry_count: 0,
       status: "fallback",
     },
-    { logDir: cfg.log_dir, canaryKey: cfg.canary_key }
+    { logDir: traceLogDir, canaryKey: traceCanaryKey }
   );
 
   // Attempt NVIDIA fallback
@@ -139,7 +141,7 @@ export async function generator(
           retry_count: attempt,
           status: "success",
         },
-        { logDir: cfg.log_dir, canaryKey: cfg.canary_key }
+        { logDir: traceLogDir, canaryKey: traceCanaryKey }
       );
       return res;
     } catch (err: unknown) {

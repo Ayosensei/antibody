@@ -64,7 +64,7 @@ export function checkToolPolicyViolations(
           if (typeof argVal !== "number" || Number.isNaN(argVal)) {
             isViolation = true;
             failureReason = `field '${rule.field}' must be a number, got ${typeof argVal}`;
-          } else if (argVal > rule.value) {
+          } else if (typeof rule.value === "number" && argVal > rule.value) {
             isViolation = true;
             failureReason = `field '${rule.field}' value ${argVal} exceeds max ${rule.value}`;
           }
@@ -72,6 +72,7 @@ export function checkToolPolicyViolations(
         }
 
         case "equals_ctx": {
+          if (!rule.ctx_key) break;
           const expected = ctx[rule.ctx_key];
           if (argVal !== expected) {
             isViolation = true;
@@ -81,6 +82,7 @@ export function checkToolPolicyViolations(
         }
 
         case "in_ctx": {
+          if (!rule.ctx_key) break;
           const ctxArr = ctx[rule.ctx_key];
           if (!Array.isArray(ctxArr)) {
             isViolation = true;
@@ -93,23 +95,25 @@ export function checkToolPolicyViolations(
         }
 
         case "in_enum": {
-          if (!Array.isArray(rule.value) || !rule.value.includes(String(argVal))) {
+          const allowed = Array.isArray(rule.value) ? rule.value : [];
+          if (!allowed.includes(String(argVal))) {
             isViolation = true;
-            failureReason = `field '${rule.field}' value '${String(argVal)}' not in allowed enum [${rule.value.join(", ")}]`;
+            failureReason = `field '${rule.field}' value '${String(argVal)}' not in allowed enum [${allowed.join(", ")}]`;
           }
           break;
         }
 
         case "regex": {
           try {
-            const re = new RegExp(rule.value);
+            const pattern = typeof rule.value === "string" ? rule.value : "";
+            const re = new RegExp(pattern);
             if (!re.test(String(argVal))) {
               isViolation = true;
-              failureReason = `field '${rule.field}' value '${String(argVal)}' does not match regex /${rule.value}/`;
+              failureReason = `field '${rule.field}' value '${String(argVal)}' does not match regex /${pattern}/`;
             }
           } catch {
             isViolation = true;
-            failureReason = `Invalid regex pattern in policy: ${rule.value}`;
+            failureReason = `Invalid regex pattern in policy: ${String(rule.value)}`;
           }
           break;
         }

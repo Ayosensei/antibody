@@ -1,0 +1,86 @@
+/**
+ * Layout styles for Antibody.
+ * Docs: docs/DESIGN.md §2.2, §3.5, §3.11, §14.2.
+ */
+
+.ab-container {
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+@media (min-width: 640px) {
+  .ab-container {
+    padding: 0 24px;
+  }
+}
+
+.ab-main {
+  padding-top: 96px; /* Space for the floating glass pill nav */
+  padding-bottom: 64px;
+}
+
+/* Glass Pill Navigation (DESIGN §2.2) */
+.ab-nav-pill {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--ab-z-nav);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: var(--ab-glass);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--ab-line);
+  box-shadow: var(--ab-shadow-pill);
+  border-radius: var(--ab-r-pill);
+  padding: 6px 16px;
+  max-width: calc(100vw - 32px);
+}
+
+@supports not (backdrop-filter: blur(16px)) {
+  .ab-nav-pill {
+    background: var(--ab-solid-nav);
+  }
+}
+
+.ab-nav-wordmark {
+  font-family: var(--ab-font-display);
+  font-weight: 500;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  color: var(--ab-text);
+  margin-right: 8px;
+}
+
+.ab-nav-link {
+  font-size: var(--ab-fs-small);
+  color: var(--ab-text-2);
+  padding: 6px 12px;
+  border-radius: var(--ab-r-pill);
+  transition: color var(--ab-dur-1) var(--ab-ease), background var(--ab-dur-1) var(--ab-ease);
+}
+
+.ab-nav-link:hover {
+  color: var(--ab-text);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.ab-nav-link[aria-current="page"] {
+  color: var(--ab-text);
+  background: var(--ab-s3);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+/* Footer (DESIGN §11.1) */
+.ab-footer {
+  text-align: center;
+  padding: 40px 16px;
+  font-size: var(--ab-fs-caption);
+  color: var(--ab-text-3);
+  border-top: 1px solid var(--ab-line);
+  margin-top: 64px;
+}

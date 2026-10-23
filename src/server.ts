@@ -283,7 +283,7 @@ export function createApiServer(options: ServerOptions = {}): http.Server {
           source_target: String(rec.source_target || ""),
           root_cause_code: String(rec.root_cause_code || ""),
           attack_class: String(rec.attack_class || ""),
-          tool_kind: String(rec.tool_kind || ""),
+          tool_kind: String(rec.implicated_tool_kind || ""),
           fix_types: Array.isArray(rec.fix_types) ? rec.fix_types.join(",") : String(rec.fix_types || ""),
           outcome: String(rec.outcome || ""),
           trust: Number(rec.trust || 0),
