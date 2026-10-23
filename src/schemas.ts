@@ -83,6 +83,7 @@ export const RootCauseSchema = z.enum([
   "FT-99",
 ]);
 export type RootCause = z.infer<typeof RootCauseSchema>;
+export type RootCauseCode = RootCause;
 
 export const FixTypeSchema = z.enum([
   "prompt_rule",
@@ -922,6 +923,12 @@ export const TraceLineSchema = z.object({
 });
 export type TraceLine = z.infer<typeof TraceLineSchema>;
 
+export interface TraceContext {
+  traceId: string;
+  logDir: string;
+  canaryKey?: string;
+}
+
 // ============================================================================
 // 11. API and Report (DATA_CONTRACTS.md §11 & DESIGN.md §8.1.5)
 // ============================================================================
@@ -966,6 +973,12 @@ export const RunRequestSchema = z
     }
   });
 export type RunRequest = z.infer<typeof RunRequestSchema>;
+
+export const UnresolvedSchema = z.object({
+  attack_id: z.string(),
+  reasons: z.array(RejectionSchema),
+});
+export type Unresolved = z.infer<typeof UnresolvedSchema>;
 
 export const ReportSchema = z.object({
   trace_id: TraceIdSchema,

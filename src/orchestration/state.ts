@@ -53,7 +53,7 @@ export interface RunState {
   regression_tasks: RegressionTask[];
   queue: Finding[];
   current: CurrentFindingState;
-  accepted_fixes: { fix: Fix; finding: Finding }[];
+  accepted_fixes: { fix: Fix; finding: Finding; attack: Attack }[];
   unresolved: Unresolved[];
   final: SuiteResult | null;
   counters: StateCounters;

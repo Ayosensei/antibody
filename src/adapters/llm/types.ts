@@ -1,3 +1,5 @@
+import type { TraceContext } from "../../schemas";
+
 export type LLMRole = "reasoning" | "fast";
 
 export interface ChatMessage {
@@ -7,6 +9,9 @@ export interface ChatMessage {
 
 export interface GeneratorOptions {
   traceId?: string;
+  traceContext?: TraceContext;
+  logDir?: string;
+  canaryKey?: string;
   temperature?: number;
   maxTokens?: number;
   timeoutMs?: number;

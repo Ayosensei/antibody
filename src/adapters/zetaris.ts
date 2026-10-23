@@ -28,6 +28,7 @@ export interface ZetarisOptions {
   traceId?: string;
   targetAgent?: string;
   logDir?: string;
+  canaryKey?: string;
   memoryDir?: string;
   fetchFn?: typeof fetch;
   onDegraded?: (code: "zetaris_fallback") => void;
@@ -125,7 +126,7 @@ export async function runSql(sql: string, opts?: ZetarisOptions): Promise<SqlRes
           retry_count: 0,
           status: "success",
         },
-        { logDir: opts?.logDir }
+        { logDir: opts?.logDir, canaryKey: opts?.canaryKey }
       );
     } catch {
       // Non-blocking
@@ -188,7 +189,7 @@ export async function runSql(sql: string, opts?: ZetarisOptions): Promise<SqlRes
           retry_count: retryCount,
           status: "success",
         },
-        { logDir: opts?.logDir }
+        { logDir: opts?.logDir, canaryKey: opts?.canaryKey }
       );
     } catch {
       // Non-blocking
@@ -227,7 +228,7 @@ export async function runSql(sql: string, opts?: ZetarisOptions): Promise<SqlRes
           retry_count: retryCount,
           status: "fallback",
         },
-        { logDir: opts?.logDir }
+        { logDir: opts?.logDir, canaryKey: opts?.canaryKey }
       );
     } catch {
       // Non-blocking
@@ -258,7 +259,7 @@ export async function runSql(sql: string, opts?: ZetarisOptions): Promise<SqlRes
             retry_count: 0,
             status: "failed",
           },
-          { logDir: opts?.logDir }
+          { logDir: opts?.logDir, canaryKey: opts?.canaryKey }
         );
       } catch {
         // Non-blocking
@@ -295,7 +296,7 @@ export async function runSql(sql: string, opts?: ZetarisOptions): Promise<SqlRes
               retry_count: 1,
               status: "failed",
             },
-            { logDir: opts?.logDir }
+            { logDir: opts?.logDir, canaryKey: opts?.canaryKey }
           );
         } catch {
           // Non-blocking

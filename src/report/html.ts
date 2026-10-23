@@ -327,7 +327,7 @@ export function buildHtmlReport(report: Report): string {
           </thead>
           <tbody>
             ${report.findings.map((f) => {
-              const accepted = f.fixes.some((fix) => fix.status === "verified");
+              const accepted = f.fixes.some((fix) => fix.status === "accepted");
               return `
                 <tr>
                   <td class="mono"><strong>${escapeHtml(f.finding.finding_id)}</strong></td>
