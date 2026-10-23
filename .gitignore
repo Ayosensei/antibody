@@ -31,3 +31,6 @@ coverage/
 .DS_Store
 Thumbs.db
 *.tsbuildinfo
+
+# Scratch and temporary spike directories
+scratch/
