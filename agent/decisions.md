@@ -29,3 +29,8 @@ Reversible? Easy.
 Decision: Verifier (`src/agents/verifier.ts`) is a pure deterministic critic without model calls. Explanations conform to strict citation validation rules (V-1 to V-7) over evidence packets. Target execution and agents support pluggable generator injection for offline deterministic testing. State machine implements full N0..N11 cycle with queue pruning, H-MEM memory feedback, and escalation fallback gating.
 Why: AGENTS.md Hard Rules 1, 2, 3, 5, 11; DATA_CONTRACTS.md §8, §11; AGENT_SPEC.md §4, §6.
 Reversible? Easy.
+
+### 2026-10-23 — API Server and Report Builder (Task T-A6)
+Decision: Implemented HTTP API server in `src/server.ts` using Node's standard `node:http` module on port 8000, supporting synchronous `POST /run` (wait: true) and asynchronous `POST /run` (wait: false), `GET /runs/:id`, real-time SSE streaming with `Last-Event-ID` resume and 15s keepalive, `/zetaris-sources/*` tables, memory reset with `X-Confirm: reset`, and HTML report generation.
+Why: DATA_CONTRACTS.md §11 & §13; DESIGN.md §16.
+Reversible? Easy.
