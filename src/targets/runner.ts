@@ -1,14 +1,17 @@
 import { generator as defaultGenerator, ChatMessage } from "../adapters/llm";
 import {
+  Attack,
   Carrier,
   Policy,
+  RegressionTask,
   TargetConfig,
   TargetId,
   TargetRun,
   TargetRunSchema,
   ToolCall,
+  TraceContext,
 } from "../schemas";
-import { applyInputFilters, evaluateToolCall, generateCanary } from "./common";
+import { applyInputFilters, composeInput, evaluateToolCall, generateCanary } from "./common";
 import { simulateMeetingTool } from "./meeting-tasks";
 import { simulateSupportTool } from "./support-triage";
 
@@ -16,15 +19,19 @@ export interface ExecuteTargetParams {
   targetId: TargetId;
   config: TargetConfig;
   policy: Policy;
-  carrier: Carrier;
-  inputText: string;
-  ctx: Record<string, string | string[]>;
-  seed: number;
-  runRef: string;
-  subjectId: string;
+  carrier?: Carrier;
+  inputText?: string;
+  ctx?: Record<string, string | string[]>;
+  seed?: number;
+  runRef?: string;
+  subjectId?: string;
   trial: number;
+  canary?: string;
   traceId?: string;
+  traceContext?: TraceContext;
   generatorFn?: typeof defaultGenerator;
+  attack?: Attack;
+  regressionTask?: RegressionTask;
 }
 
 interface ActionPayload {
@@ -59,12 +66,42 @@ function parseModelJson(rawText: string): ActionPayload | null {
 export async function executeTarget(params: ExecuteTargetParams): Promise<TargetRun> {
   const gen = params.generatorFn || defaultGenerator;
 
+  const subjectId =
+    params.subjectId ||
+    (params.attack ? params.attack.attack_id : params.regressionTask?.task_id || "run");
+  const runRef = params.runRef || `${subjectId}_t${params.trial}`;
+  const seed = params.seed ?? 42;
+
+  let inputText = params.inputText;
+  let carrier = params.carrier;
+  let ctx = params.ctx;
+
+  if (params.attack) {
+    inputText = inputText ?? composeInput(params.attack);
+    carrier = carrier ?? params.attack.carrier;
+    ctx = ctx ?? (params.targetId === "support_triage" ? {
+      "ticket.sender": "cust1@example.test",
+      "ticket.customer_id": "C-1001",
+      "ticket.order_id": "O-5001",
+    } : {
+      "meeting.attendees": ["alex@example.test", "sam@example.test", "pat@example.test", "jo@example.test"],
+    });
+  } else if (params.regressionTask) {
+    inputText = inputText ?? params.regressionTask.input_text;
+    carrier = carrier ?? params.regressionTask.carrier;
+    ctx = ctx ?? params.regressionTask.ctx;
+  }
+
+  inputText = inputText ?? "";
+  carrier = carrier ?? "email_body";
+  ctx = ctx ?? {};
+
   // 1. Evaluate input filters on carrier text
-  const filterResult = applyInputFilters(params.inputText, params.carrier, params.config.input_filters);
+  const filterResult = applyInputFilters(inputText, carrier, params.config.input_filters);
   if (filterResult.blocked) {
     const blockedRun: TargetRun = {
-      run_ref: params.runRef,
-      subject_id: params.subjectId,
+      run_ref: runRef,
+      subject_id: subjectId,
       trial: params.trial,
       steps: 0,
       tokens: 0,
@@ -78,7 +115,7 @@ export async function executeTarget(params: ExecuteTargetParams): Promise<Target
   }
 
   // 2. Generate and plant canary
-  const canary = generateCanary(params.policy.canary_prefix, params.seed, params.runRef);
+  const canary = params.canary || generateCanary(params.policy.canary_prefix, seed, runRef);
   let systemPrompt = params.config.base_system_prompt.replace(/\{\{CANARY\}\}/g, canary);
 
   if (filterResult.hasWrapUntrusted) {
@@ -91,7 +128,7 @@ export async function executeTarget(params: ExecuteTargetParams): Promise<Target
   }
 
   // 3. Build initial user message with context
-  const contextBlock = `Context:\n${JSON.stringify(params.ctx, null, 2)}`;
+  const contextBlock = `Context:\n${JSON.stringify(ctx, null, 2)}`;
   const initialUserPrompt = `${filterResult.text}\n\n${contextBlock}`;
 
   const messages: ChatMessage[] = [
@@ -108,6 +145,7 @@ export async function executeTarget(params: ExecuteTargetParams): Promise<Target
 
   const maxSteps = params.policy.caps.max_steps;
   const maxTokens = params.policy.caps.max_tokens;
+  const traceId = params.traceId || params.traceContext?.traceId;
 
   // 4. Execution loop
   while (steps < maxSteps) {
@@ -115,7 +153,7 @@ export async function executeTarget(params: ExecuteTargetParams): Promise<Target
 
     let completionResult;
     try {
-      completionResult = await gen("fast", messages, { traceId: params.traceId });
+      completionResult = await gen("fast", messages, { traceId });
     } catch {
       haltedReason = "error";
       break;
@@ -213,8 +251,8 @@ export async function executeTarget(params: ExecuteTargetParams): Promise<Target
   }
 
   const run: TargetRun = {
-    run_ref: params.runRef,
-    subject_id: params.subjectId,
+    run_ref: runRef,
+    subject_id: subjectId,
     trial: params.trial,
     steps,
     tokens: totalTokens,
