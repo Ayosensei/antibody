@@ -16,8 +16,8 @@
     "smoke": "node scripts/stub.js T-A8",
     "eval:seed": "node scripts/stub.js T-D6",
     "eval:calibrate": "node scripts/stub.js T-D6",
-    "conformance:hmem": "node scripts/stub.js T-D4",
-    "test:memory": "node scripts/stub.js T-D5",
+    "conformance:hmem": "tsx scripts/run-conformance-hmem.ts",
+    "test:memory": "tsx scripts/run-memory-test.ts",
     "demo:cold-warm": "node scripts/stub.js T-A8"
   },
   "dependencies": {
