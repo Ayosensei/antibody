@@ -17,6 +17,10 @@ logs/*.jsonl
 logs/*.log
 !logs/.gitkeep
 
+# Reports output
+reports/*.json
+!reports/.gitkeep
+
 # Memory storage
 data/memory/
 

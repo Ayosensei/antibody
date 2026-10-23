@@ -24,3 +24,8 @@ Reversible? Easy.
 Decision: Implemented `src/judge/` as pure code modules (`canary.ts`, `caps.ts`, `tool-policy.ts`, `judge.ts`, `regression.ts`, `index.ts`) completely decoupled from LLM adapters.
 Why: LLMs must never judge success (AGENTS.md Hard Rule 3 and EVAL.md §2). Validated with 100% pass on J-01..J-20 and R-01..R-04 fixtures.
 Reversible? Easy.
+
+### 2026-10-23 — Graph and Agents Architecture (Task T-A5)
+Decision: Verifier (`src/agents/verifier.ts`) is a pure deterministic critic without model calls. Explanations conform to strict citation validation rules (V-1 to V-7) over evidence packets. Target execution and agents support pluggable generator injection for offline deterministic testing. State machine implements full N0..N11 cycle with queue pruning, H-MEM memory feedback, and escalation fallback gating.
+Why: AGENTS.md Hard Rules 1, 2, 3, 5, 11; DATA_CONTRACTS.md §8, §11; AGENT_SPEC.md §4, §6.
+Reversible? Easy.

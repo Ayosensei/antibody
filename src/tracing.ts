@@ -155,3 +155,48 @@ export function writeTraceLine(
 
   return { lineNo, line: validatedLine };
 }
+
+export interface RecordTraceParams {
+  traceId: string;
+  agentName: TraceLine["agent_name"];
+  action: TraceLine["action"];
+  status: TraceLine["status"];
+  inputSummary?: string;
+  outputSummary?: string;
+  targetAgent?: string;
+  confidence?: number;
+  retryCount?: number;
+  replayed?: boolean;
+  meta?: Record<string, string | number | boolean>;
+}
+
+export function generateTraceId(): string {
+  const now = new Date();
+  const ymd = now.toISOString().slice(0, 10).replace(/-/g, "");
+  const hms = now.toISOString().slice(11, 19).replace(/:/g, "");
+  const rand = Math.floor(Math.random() * 0x10000).toString(16).padStart(4, "0");
+  return `run_${ymd}T${hms}Z_${rand}`;
+}
+
+export function recordTrace(
+  params: RecordTraceParams,
+  options?: TraceWriteOptions
+): { lineNo: number; line: TraceLine } {
+  return writeTraceLine(
+    {
+      timestamp: new Date().toISOString(),
+      trace_id: params.traceId,
+      agent_name: params.agentName,
+      action: params.action,
+      input_summary: (params.inputSummary || params.action).slice(0, 300),
+      output_summary: (params.outputSummary || params.status).slice(0, 300),
+      target_agent: params.targetAgent || "System",
+      confidence: params.confidence ?? 1.0,
+      retry_count: params.retryCount ?? 0,
+      status: params.status,
+      replayed: params.replayed,
+      meta: params.meta,
+    },
+    options
+  );
+}
