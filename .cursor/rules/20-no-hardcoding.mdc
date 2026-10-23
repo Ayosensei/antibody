@@ -1,0 +1,12 @@
+---
+description: No hardcoded results, no canned sponsor calls
+globs: src/**/*.ts, data/**, scripts/**
+alwaysApply: false
+---
+
+- Never return a prewritten final answer, report, verdict or fix.
+- Never return canned rows pretending to be a Zetaris, model or memory result. The local SQL store must run real SQL on loaded data.
+- Do not branch on known sample ids (for example `if (attack_id === "atk_exf_001")`).
+- `output_examples/` and `data/comparison/` are outputs; code under `src/` must not read them.
+- Test doubles (fake models, fake HTTP) belong only in `test/` and must never be importable from `src/`.
+- Numbers shown in the UI or docs must come from a saved `Report`.

@@ -1,0 +1,135 @@
+/* Antibody design tokens. Source of truth: docs/DESIGN.md section 3.
+   If this file and DESIGN.md disagree, DESIGN.md wins and this file is fixed. */
+:root {
+  color-scheme: dark;
+
+  /* Surfaces and lines (3.1) */
+  --ab-bg: #07080b;
+  --ab-s1: #0c0e13;
+  --ab-s2: #12151c;
+  --ab-s3: #191d27;
+  --ab-line: rgba(255, 255, 255, 0.08);
+  --ab-line-strong: rgba(255, 255, 255, 0.16);
+  --ab-glass: rgba(14, 16, 21, 0.72);
+  --ab-solid-nav: #0e1015;
+
+  /* Text */
+  --ab-text: #f2f4f8;
+  --ab-text-2: #b4bac6;
+  --ab-text-3: #7f8798;
+  --ab-text-on-lime: #0b1203;
+
+  /* Accent and status */
+  --ab-lime: #c6f36a;
+  --ab-lime-tint: rgba(198, 243, 106, 0.12);
+  --ab-ember: #ff7a59;
+  --ab-ember-tint: rgba(255, 122, 89, 0.12);
+  --ab-amber: #f2c14e;
+  --ab-amber-tint: rgba(242, 193, 78, 0.12);
+  --ab-ice: #7fb2ff;
+  --ab-ice-tint: rgba(127, 178, 255, 0.12);
+  --ab-focus: #9cc4ff;
+  --ab-disabled-fill: #242935;
+
+  /* Agent hues */
+  --ab-agent-attacker: #e08a63;
+  --ab-agent-judge: #c9ced8;
+  --ab-agent-diagnoser: #7fb2ff;
+  --ab-agent-memory: #a99bff;
+  --ab-agent-fixer: #c6f36a;
+  --ab-agent-verifier: #ebc862;
+  --ab-agent-system: #7f8798;
+
+  /* Typography (3.4) */
+  --ab-font-display: "Outfit", "Segoe UI", system-ui, sans-serif;
+  --ab-font-text: "Hanken Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --ab-font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --ab-fs-display-xl: clamp(40px, 7vw, 76px);
+  --ab-fs-display-l: clamp(30px, 4.5vw, 44px);
+  --ab-fs-h1: 32px;
+  --ab-fs-h2: 24px;
+  --ab-fs-h3: 18px;
+  --ab-fs-body-l: 18px;
+  --ab-fs-body: 16px;
+  --ab-fs-small: 14px;
+  --ab-fs-caption: 13px;
+  --ab-fs-mono: 13px;
+  --ab-fs-mono-s: 12.5px;
+  --ab-fs-num-xl: 48px;
+
+  --ab-lh-display-xl: 1.02;
+  --ab-lh-display-l: 1.08;
+  --ab-lh-h1: 1.15;
+  --ab-lh-h2: 1.25;
+  --ab-lh-h3: 1.3;
+  --ab-lh-body-l: 1.6;
+  --ab-lh-body: 1.6;
+  --ab-lh-small: 1.5;
+  --ab-lh-caption: 1.4;
+  --ab-lh-mono: 1.5;
+  --ab-lh-num-xl: 1;
+
+  --ab-tr-display-xl: -0.035em;
+  --ab-tr-display-l: -0.03em;
+  --ab-tr-h1: -0.02em;
+  --ab-tr-h2: -0.015em;
+  --ab-tr-h3: -0.005em;
+  --ab-tr-num-xl: -0.02em;
+  --ab-tr-caption: 0.01em;
+
+  /* Spacing (3.5), 4px base */
+  --ab-sp-1: 4px;
+  --ab-sp-2: 8px;
+  --ab-sp-3: 12px;
+  --ab-sp-4: 16px;
+  --ab-sp-5: 20px;
+  --ab-sp-6: 24px;
+  --ab-sp-7: 32px;
+  --ab-sp-8: 40px;
+  --ab-sp-9: 56px;
+  --ab-sp-10: 72px;
+  --ab-sp-11: 96px;
+  --ab-sp-12: 128px;
+
+  /* Radii (3.6) */
+  --ab-r-pill: 999px;
+  --ab-r-plate: 28px;
+  --ab-r-card: 20px;
+  --ab-r-row: 18px;
+  --ab-r-inlay: 14px;
+  --ab-r-field: 14px;
+  --ab-r-chip-sq: 8px;
+
+  /* Shadows (3.7) */
+  --ab-shadow-plate: inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 -1px 0 rgba(0, 0, 0, 0.6), 0 18px 48px rgba(0, 0, 0, 0.55);
+  --ab-shadow-pill: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 8px 24px rgba(0, 0, 0, 0.5);
+  --ab-shadow-lime: 0 0 0 1px rgba(198, 243, 106, 0.5), 0 8px 28px rgba(198, 243, 106, 0.22);
+  --ab-shadow-float: 0 24px 64px rgba(0, 0, 0, 0.65);
+  --ab-shadow-inlay: inset 0 1px 0 rgba(0, 0, 0, 0.5);
+  --ab-shadow-field: inset 0 1px 2px rgba(0, 0, 0, 0.5);
+
+  /* Motion (3.9) */
+  --ab-dur-1: 120ms;
+  --ab-dur-2: 200ms;
+  --ab-dur-3: 320ms;
+  --ab-dur-sheen: 900ms;
+  --ab-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  /* Layout (3.11) */
+  --ab-container: 1120px;
+  --ab-console: 920px;
+  --ab-hero: 760px;
+  --ab-measure: 70ch;
+  --ab-progress-w: 320px;
+  --ab-nav-h: 52px;
+  --ab-page-top: 96px;
+  --ab-pad-x: 16px; /* sm; layout.css raises to 24px at 640px and 32px at 900px */
+
+  /* Z-index (3.12) */
+  --ab-z-base: 0;
+  --ab-z-sticky: 20;
+  --ab-z-nav: 40;
+  --ab-z-dialog: 60;
+  --ab-z-toast: 70;
+}

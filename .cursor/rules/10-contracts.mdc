@@ -1,0 +1,13 @@
+---
+description: Contract and schema discipline for source files
+globs: src/**/*.ts
+alwaysApply: false
+---
+
+- Import types from `src/schemas.ts`. Do not redefine them locally.
+- Field names are `snake_case` exactly as in `docs/DATA_CONTRACTS.md`.
+- Validate at runtime: API request bodies, files from `data/`, model JSON outputs, Zetaris rows, memory records.
+- Model outputs are untrusted: parse, validate, re-ask once with the validation error, then take the documented fallback.
+- Do not add or rename fields or enum values. If one is needed, stop and request a contract change (`docs/DATA_CONTRACTS.md` section 15).
+- Every agent decision writes a `TraceLine` with an action name from the allowed list.
+- Explanations: models may cite only ids from the evidence packet; validate with `validateExplanation` (rules V-1 to V-7); flag failures as `verified: false`, never drop them.

@@ -1,0 +1,207 @@
+/* Antibody metal language. Source of truth: docs/DESIGN.md sections 3.2, 3.3, 3.8, 3.9.
+   Bright metal is allowed ONLY on: readiness plate rim and medal, silver stage discs,
+   silver target-card discs, the headline text, and chrome hairlines. */
+:root {
+  --ab-silver: linear-gradient(145deg, #f7f9fc 0%, #cdd3dd 22%, #8d95a4 48%, #e3e7ee 68%, #9aa2b1 100%);
+  --ab-gold: linear-gradient(145deg, #fff1bf 0%, #ebc862 24%, #b58a2a 52%, #f6dc8c 74%, #c49a3c 100%);
+  --ab-bronze: linear-gradient(145deg, #f6d2b3 0%, #d09566 26%, #8e5b3a 54%, #e2ae86 78%, #9c6844 100%);
+  --ab-gunmetal: linear-gradient(145deg, #3b4252 0%, #1b1f29 40%, #0f1218 70%, #2a3040 100%);
+  --ab-chrome-edge: linear-gradient(150deg, #f5f7fa 0%, #7a8294 30%, #1a1e27 55%, #a9b0be 80%, #e9ecf2 100%);
+  --ab-metal-text: linear-gradient(180deg, #ffffff 0%, #c4cad6 52%, #7c8496 100%);
+  --ab-metal-text-dim: linear-gradient(180deg, #9aa1b0 0%, #6d7485 100%);
+  --ab-sheen: linear-gradient(105deg, transparent 38%, rgba(255, 255, 255, 0.28) 50%, transparent 62%);
+  --ab-page-light: radial-gradient(1200px 600px at 50% -10%, rgba(180, 190, 210, 0.16), transparent 60%);
+}
+
+/* Metal headline text (two-line launcher headline: line 1 default, line 2 --dim) */
+.ab-metal-text {
+  display: inline-block;
+  padding-bottom: 0.08em; /* keeps descenders from being clipped by background-clip */
+  background: var(--ab-metal-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+.ab-metal-text--dim {
+  background-image: var(--ab-metal-text-dim);
+}
+@supports not ((-webkit-background-clip: text) or (background-clip: text)) {
+  .ab-metal-text,
+  .ab-metal-text--dim {
+    background: none;
+    color: var(--ab-text);
+    -webkit-text-fill-color: currentColor;
+  }
+}
+
+/* One-time headline sheen (L2). Exception to the transform-only rule: runs once. */
+.ab-metal-text--sheen {
+  background-image: linear-gradient(105deg, transparent 40%, rgba(255, 255, 255, 0.9) 50%, transparent 60%), var(--ab-metal-text);
+  background-size: 250% 100%, 100% 100%;
+  background-position: 150% 0, 0 0;
+  background-repeat: no-repeat;
+  animation: ab-headline-sheen var(--ab-dur-sheen) var(--ab-ease) 200ms 1 both;
+}
+@keyframes ab-headline-sheen {
+  from { background-position: 150% 0, 0 0; }
+  to { background-position: -50% 0, 0 0; }
+}
+
+/* Chrome edge: bright hairline around pills and plates. Set --ab-edge-fill to change the inner fill. */
+.ab-edge {
+  border: 1px solid transparent;
+  background:
+    linear-gradient(var(--ab-edge-fill, var(--ab-s2)), var(--ab-edge-fill, var(--ab-s2))) padding-box,
+    var(--ab-chrome-edge) border-box;
+}
+
+/* Plate: the large framed surface (console, readiness, tracker, trace, progress) */
+.ab-plate {
+  --ab-plate-fill: var(--ab-s1);
+  --ab-plate-edge: var(--ab-chrome-edge);
+  position: relative;
+  isolation: isolate;
+  border: 1px solid transparent;
+  border-radius: var(--ab-r-plate);
+  background:
+    linear-gradient(var(--ab-plate-fill), var(--ab-plate-fill)) padding-box,
+    var(--ab-plate-edge) border-box;
+  box-shadow: var(--ab-shadow-plate);
+}
+.ab-plate::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), transparent 28%);
+}
+/* Verdict plates: thicker metal rim, only for the readiness plate */
+.ab-plate--verdict { border-width: 3px; }
+.ab-plate--gold { --ab-plate-edge: var(--ab-gold); }
+.ab-plate--silver { --ab-plate-edge: var(--ab-silver); }
+.ab-plate--bronze { --ab-plate-edge: var(--ab-bronze); }
+
+/* Brushed grain (L2). Add .ab-grain to a plate. Remove if it hurts legibility or performance. */
+.ab-grain::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0.04;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .5 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+/* Medal: readiness disc. Variants set the ring metal. Decorative (aria-hidden). */
+.ab-medal {
+  --ab-medal-metal: var(--ab-silver);
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 96px;
+  height: 96px;
+  border: 6px solid transparent;
+  border-radius: 50%;
+  background:
+    linear-gradient(var(--ab-s2), var(--ab-s2)) padding-box,
+    var(--ab-medal-metal) border-box;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.5), 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+.ab-medal::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  pointer-events: none;
+  background: conic-gradient(from 210deg, rgba(255, 255, 255, 0.55), transparent 25%, rgba(255, 255, 255, 0.25) 50%, transparent 75%, rgba(255, 255, 255, 0.55));
+  mix-blend-mode: overlay;
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 5px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 5px));
+}
+.ab-medal--gold { --ab-medal-metal: var(--ab-gold); color: var(--ab-lime); }
+.ab-medal--silver { --ab-medal-metal: var(--ab-silver); color: var(--ab-amber); }
+.ab-medal--bronze { --ab-medal-metal: var(--ab-bronze); color: var(--ab-ember); }
+@media (max-width: 639px) {
+  .ab-medal { width: 72px; height: 72px; }
+}
+
+/* Silver disc (stage tracker done state, target-card icon). Icon inside uses dark glyph color. */
+.ab-disc-silver {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--ab-silver);
+  color: #0b0d12;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+
+/* Sheen sweep on hover or focus (L2). Add .ab-sheen to a button. */
+.ab-sheen {
+  position: relative;
+  overflow: hidden;
+}
+.ab-sheen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: var(--ab-sheen);
+  transform: translateX(-120%);
+}
+.ab-sheen:hover::after,
+.ab-sheen:focus-visible::after {
+  transform: translateX(120%);
+  transition: transform var(--ab-dur-sheen) var(--ab-ease);
+}
+
+/* Live-run scan line (L2). Place as the first child of the trace plate while running. */
+.ab-scan {
+  position: relative;
+  height: 2px;
+  overflow: hidden;
+  background: var(--ab-line);
+  border-radius: 2px;
+}
+.ab-scan::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, #f7f9fc, transparent);
+  animation: ab-scan 2.4s linear infinite;
+}
+@keyframes ab-scan {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(250%); }
+}
+
+/* Skeleton shimmer (L2) */
+.ab-skeleton {
+  background: var(--ab-s2);
+  border-radius: var(--ab-r-inlay);
+  position: relative;
+  overflow: hidden;
+}
+.ab-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--ab-sheen);
+  transform: translateX(-120%);
+  animation: ab-shimmer 1.6s linear infinite;
+}
+@keyframes ab-shimmer {
+  to { transform: translateX(120%); }
+}
+
+/* Reduced motion (3.9 rule 5) */
+@media (prefers-reduced-motion: reduce) {
+  .ab-metal-text--sheen { animation: none; background-position: -50% 0, 0 0; }
+  .ab-sheen::after { display: none; }
+  .ab-scan::after { animation: none; width: 100%; background: var(--ab-ice); transform: none; }
+  .ab-skeleton::after { animation: none; display: none; }
+}

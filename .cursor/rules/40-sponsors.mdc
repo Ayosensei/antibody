@@ -1,0 +1,11 @@
+---
+description: Rules for sponsor adapters (Zetaris, Meterless, NVIDIA)
+globs: src/adapters/**
+alwaysApply: false
+---
+
+- Zetaris: REST `POST {ZETARIS_REST_URL}/sql-editor/sqls/run`, headers `Authorization: Bearer`, `X-Org-ID`, `X-Request-ID` (fresh UUID), body `{queryId, sql, source:"SqlEditor", limit}`. One statement per request, portable SQL subset only. On HTTP 400/401 do NOT fall back (config error); on timeout/5xx retry once then fall back to the local store and add `zetaris_fallback` to `degraded`.
+- Meterless Nightshift: OpenAI-compatible; `Authorization: Bearer <runtime token>`, headers `meterless-app` and `meterless-scope: user`; `GET /v1/models`, `POST /v1/chat/completions`. `meterless/auto` is a routing mode, not a model id. `/healthz` is not proof a model works.
+- NVIDIA direct is a fallback only; take base URL, key and model id from the same route. Base URL is UNVERIFIED until copied from build.nvidia.com.
+- H-MEM: method names are UNVERIFIED until `docs/SPONSOR_METERLESS.md` section A6 is filled. Wrap the vendored reference; keep our `FixMemory` interface stable.
+- Never claim a sponsor feature in code comments or docs that is not wired and tested.

@@ -1,0 +1,12 @@
+---
+description: Antibody project overview and non-negotiables
+alwaysApply: true
+---
+
+Project: Antibody (hackathon, Track 2: Explain Why). Read `AGENTS.md` and `README.md` first.
+
+- Stack: TypeScript, Next.js (port 3100), API on port 8000, LangGraph.js (UNVERIFIED version).
+- Success is decided by code in `src/judge/`, never by an LLM.
+- Source of truth for names and shapes: `docs/DATA_CONTRACTS.md` and `src/schemas.ts`.
+- Anything not in the docs is UNVERIFIED: say so and ask.
+- Work from the task in `docs/TASKS_<name>.md`; stay within its acceptance criteria.
