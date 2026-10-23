@@ -19,3 +19,8 @@ Reversible? Easy.
 Decision: Prioritize test verification of `block_pattern` input filtering (preventing dangerous text from reaching the LLM) before testing loop/cap enforcement.
 Why (user's words): "block_pattern"
 Reversible? Easy.
+
+### 2026-10-23 — Deterministic Judge Architecture (Hard Rule 3)
+Decision: Implemented `src/judge/` as pure code modules (`canary.ts`, `caps.ts`, `tool-policy.ts`, `judge.ts`, `regression.ts`, `index.ts`) completely decoupled from LLM adapters.
+Why: LLMs must never judge success (AGENTS.md Hard Rule 3 and EVAL.md §2). Validated with 100% pass on J-01..J-20 and R-01..R-04 fixtures.
+Reversible? Easy.

@@ -13,10 +13,20 @@
   - `test/targets.test.ts`: 13 tests covering canary generation, attack placement, filter enforcement, tool permissions (`refused_disabled`, `held_for_approval`, `refused_unknown`), step caps, malformed JSON retry, and regression tasks (`rg_s_01`, `rg_m_01`)
   - Tests passing: 86/86 across all 7 test files
   - Linter passing: 0 errors
+- Task T-A4: Deterministic judge (`src/judge/`)
+  - `src/judge/canary.ts`: exact and normalized substring search for canary leaks across `final_output` and stringified args (`executed`, `held_for_approval`)
+  - `src/judge/caps.ts`: checks for step cap and token cap limit exceedance via `halted_reason` and metric counts
+  - `src/judge/tool-policy.ts`: validates tool permissions (`disallowed_tool_call`) and argument rules (`max`, `equals_ctx`, `in_ctx`, `in_enum`, `regex` -> `arg_policy_violation`)
+  - `src/judge/judge.ts`: core `judgeRun` returning contract-compliant `JudgeVerdict`
+  - `src/judge/regression.ts`: deterministic regression task evaluator (`expected_calls` matching, `forbidden_tools` avoidance, no `judge_hit`)
+  - `src/judge/index.ts`: entry point exporting all judging routines
+  - `test/judge.test.ts`: 32 tests passing all fixtures J-01..J-20 and R-01..R-04 with zero LLM imports (Hard Rule 3 verified)
+  - Tests passing: 132/132 across all 9 test suites
+  - Linter passing: 0 errors
 
 ### Current
-- Task T-A3 Review & Commit: Opening PR to `main`
+- Task T-A4 Review & Commit: Opening PR to `main`
 
 ### Next
-- Task T-A4: Deterministic judge (`src/judge/`) per EVAL.md sections 2, 4, 7
+- Task T-A5: State machine, agent nodes (Attacker, Diagnoser, Fixer, Verifier), and memory integration
 
