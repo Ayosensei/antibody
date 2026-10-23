@@ -16,3 +16,4 @@ One line per decision: date (UTC), who, decision, reason.
 - 2026-10-23 | Ayo & Agent | Generator interface standardized on generator(role, messages, options) with Nightshift primary and NVIDIA fallback | Complies with Power rule and fallback requirements in README 12.
 - 2026-10-23 | Ayo & Agent | Meterless Nightshift 401 Unauthorized surfaced immediately without fallback | Prevents masking bad/expired credentials as network outages.
 - 2026-10-23 | Ayo & Agent | Sandbox targets support_triage and meeting_tasks implemented with deterministic guardrail enforcement and TargetRun protocol | Satisfies AGENT_SPEC 5 and DATA_CONTRACTS 4-6 requirements.
+- 2026-10-23 | Ayo & Agent | Deterministic judge implemented in pure code (no LLM) evaluating canary leaks, tool allowances, argument rules, and caps | Enforces AGENTS.md Hard Rule 3 and passes all J-01..J-20 and R-01..R-04 fixtures.
