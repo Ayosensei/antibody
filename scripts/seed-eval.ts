@@ -159,7 +159,7 @@ async function main() {
       regPassed++;
     } else {
       regFailed.push(
-        `${fixture.id}: expected passed=${fixture.expected.passed} checks=[${fixture.expected.failed_checks.join(", ")}], got passed=${res.passed} reasons=[${res.reasons.join(", ")}]`
+        `${fixture.id}: expected passed=${fixture.expected.passed} checks=[${fixture.expected.failed_checks.join(", ")}], got passed=${res.passed} reasons=[${res.failed_checks.join(", ")}]`
       );
     }
   }

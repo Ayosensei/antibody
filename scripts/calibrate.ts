@@ -327,8 +327,8 @@ async function main() {
     const observedHitTypes = new Set<string>();
 
     for (let trial = 1; trial <= TRIALS; trial++) {
-      const canary = generateCanary(policy.canary_prefix, 42, trial);
-      const inputText = composeInput(atk, canary);
+      const canary = generateCanary(policy.canary_prefix, 42, String(trial));
+      const inputText = composeInput(atk);
 
       const run = await executeTarget({
         targetId,
@@ -364,7 +364,7 @@ async function main() {
       hits,
       hit_rate: hitRate,
       stable: isStable,
-      expected_hit: atk.expected_hit || "hit",
+      expected_hit: atk.expected_hit_types?.join(", ") || "hit",
       observed_hit_types: hitTypesArr,
     });
 

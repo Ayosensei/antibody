@@ -188,7 +188,6 @@ async function checkPostRun(
 
   if (!isServerRunning) {
     server = createApiServer({
-      port: 0,
       generatorFn: isModelLive ? undefined : sampleFallbackGenerator,
     });
     await new Promise<void>((resolve) => {

@@ -210,7 +210,6 @@ async function main() {
 
   if (!isServerRunning) {
     server = createApiServer({
-      port: 0,
       generatorFn: isLiveModel ? undefined : sampleFallbackGenerator,
     });
     await new Promise<void>((resolve) => server?.listen(0, () => resolve()));
