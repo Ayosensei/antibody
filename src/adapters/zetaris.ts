@@ -24,6 +24,7 @@ export interface ZetarisOptions {
   restUrl?: string;
   orgId?: number | string;
   apiKey?: string;
+  schema?: string;
   sampleMode?: boolean;
   traceId?: string;
   targetAgent?: string;
@@ -43,13 +44,23 @@ function defaultTraceId(): string {
 
 /**
  * Strips comments and trailing semicolon from SQL query string before sending to Zetaris REST API.
+ * Optionally prefixes unqualified known tables (attacks, policies, traces, fixes) with schema
+ * to handle Zetaris's stateless REST session execution.
  */
-function cleanSqlForZetaris(sql: string): string {
-  return sql
+export function cleanSqlForZetaris(sql: string, schema?: string): string {
+  let cleaned = sql
     .replace(/--.*$/gm, "")
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .trim()
     .replace(/;\s*$/, "");
+
+  if (schema) {
+    cleaned = cleaned.replace(
+      /\b(FROM|JOIN)\s+(attacks|policies|traces|fixes)\b/gi,
+      `$1 ${schema}.$2`
+    );
+  }
+  return cleaned;
 }
 
 /**
@@ -156,7 +167,8 @@ export async function runSql(sql: string, opts?: ZetarisOptions): Promise<SqlRes
   }
 
   // 4. LIVE ZETARIS MODE: Call REST API
-  const cleanSql = cleanSqlForZetaris(sql);
+  const schema = opts?.schema ?? process.env.ZETARIS_SCHEMA;
+  const cleanSql = cleanSqlForZetaris(sql, schema);
   const endpoint = `${restUrl}/sql-editor/sqls/run`;
 
   // Each request (including retries) generates fresh queryId and X-Request-ID

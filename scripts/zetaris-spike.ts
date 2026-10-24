@@ -30,9 +30,11 @@ async function runZetarisSpike() {
   if (!fs.existsSync(ddlPath)) {
     throw new Error(`DDL file missing: ${ddlPath}`);
   }
+  const isApply = process.argv.includes("--apply");
   const ddlSql = fs.readFileSync(ddlPath, "utf-8");
   console.log(`[Step 1] Loaded Zetaris Lightning SQL DDL recipe from: ${ddlPath}`);
-  console.log(`  => DDL byte length: ${Buffer.byteLength(ddlSql, "utf-8")} bytes\n`);
+  console.log(`  => DDL byte length: ${Buffer.byteLength(ddlSql, "utf-8")} bytes`);
+  console.log(`  => Execution Mode: ${isApply ? "APPLY (live DDL execution enabled)" : "DRY RUN (DDL syntax validated; execution requires explicit --apply or Zetaris SQL Editor per AGENTS.md Hard Rule 10)"}\n`);
 
   // Step 2: Test /zetaris-sources endpoints shape via API client
   console.log("[Step 2] Verifying /zetaris-sources/* JSON schemas and column names...");

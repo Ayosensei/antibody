@@ -14,13 +14,42 @@ describe("Task T-D5: Zetaris Table Registration Spike", () => {
     expect(content).toContain("CREATE LIGHTNING DATABASE");
     expect(content).toContain("CREATE SCHEMASTORE CONTAINER");
     expect(content).toContain("CREATE LIGHTNING REST TABLE");
+    expect(content).toContain("USING com.zetaris.lightning.datasource.v2.rest.RestDataSource");
     expect(content).toContain("CREATE OR REPLACE SCHEMASTORE VIEW");
 
-    // Verify all 4 tables
+    // Verify all 4 tables in both antibody schema and default schema (for stateless REST sessions)
     expect(content).toContain("antibody.attacks");
+    expect(content).toContain("CREATE OR REPLACE SCHEMASTORE VIEW attacks AS");
     expect(content).toContain("antibody.policies");
+    expect(content).toContain("CREATE OR REPLACE SCHEMASTORE VIEW policies AS");
     expect(content).toContain("antibody.traces");
+    expect(content).toContain("CREATE OR REPLACE SCHEMASTORE VIEW traces AS");
     expect(content).toContain("antibody.fixes");
+    expect(content).toContain("CREATE OR REPLACE SCHEMASTORE VIEW fixes AS");
+  });
+
+  it("cleanSqlForZetaris qualifies tables when schema is specified and preserves comments/semicolons", async () => {
+    const { cleanSqlForZetaris } = await import("../src/adapters/zetaris.js");
+
+    // Test comment and semicolon stripping
+    const rawSql = "SELECT * FROM attacks WHERE priority > 10; -- filter attacks\n";
+    expect(cleanSqlForZetaris(rawSql)).toBe("SELECT * FROM attacks WHERE priority > 10");
+
+    // Test schema qualification for stateless REST sessions
+    expect(cleanSqlForZetaris("SELECT * FROM attacks;", "antibody")).toBe(
+      "SELECT * FROM antibody.attacks"
+    );
+    expect(
+      cleanSqlForZetaris(
+        "SELECT a.attack_id, p.tool FROM attacks a JOIN policies p ON a.target_scope = p.target_id;",
+        "antibody"
+      )
+    ).toBe("SELECT a.attack_id, p.tool FROM antibody.attacks a JOIN antibody.policies p ON a.target_scope = p.target_id");
+
+    // Test that already-qualified tables are not double-prefixed
+    expect(cleanSqlForZetaris("SELECT * FROM antibody.attacks;", "antibody")).toBe(
+      "SELECT * FROM antibody.attacks"
+    );
   });
 
   it("Zetaris source endpoints conform to DATA_CONTRACTS §13 schemas", async () => {
