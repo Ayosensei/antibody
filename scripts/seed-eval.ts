@@ -1,22 +1,31 @@
 #!/usr/bin/env tsx
 /**
- * Seed Evaluation Runner.
- * Per README.md §8.4, docs/EVAL.md §5 & §7, and docs/TASKS_durot.md §T-D8.
- * Evaluates seed attacks and runs judge and regression fixtures, printing pass counts.
+ * scripts/seed-eval.ts
+ * Per TASKS_durot.md (Task T-D8) and EVAL.md §7 & §12.
+ *
+ * Runs deterministic judge fixtures (J-01..J-20, R-01..R-04) and explanation fixtures (X-01..X-12)
+ * and prints detailed pass counts.
  */
 
-import * as fs from "node:fs";
-import * as path from "node:path";
-import {
-  AttackSchema,
-  PolicySchema,
-  RegressionTaskSchema,
-  type Attack,
-  type Policy,
-  type RegressionTask,
-  type TargetRun,
-} from "../src/schemas.js";
+import fs from "node:fs";
+import path from "node:path";
 import { judgeRun, evaluateRegressionTask } from "../src/judge/index.js";
+import { validateExplanation } from "../src/explain/validate.js";
+import {
+  type Policy,
+  PolicySchema,
+  type RegressionTask,
+  RegressionTaskSchema,
+  type TargetRun,
+  type Explanation,
+  type EvidenceItem,
+} from "../src/schemas.js";
+
+function loadSampleJson<T>(filename: string): T {
+  const filePath = path.resolve(process.cwd(), "data/sample", filename);
+  const raw = fs.readFileSync(filePath, "utf-8");
+  return JSON.parse(raw) as T;
+}
 
 interface JudgeFixture {
   id: string;
@@ -48,146 +57,154 @@ interface JudgeDataFile {
   regression_fixtures: RegressionFixture[];
 }
 
-function loadJson<T>(relPath: string): T {
-  const fullPath = path.resolve(process.cwd(), relPath);
-  return JSON.parse(fs.readFileSync(fullPath, "utf-8")) as T;
+interface ExplanationFixture {
+  id: string;
+  description: string;
+  explanation: Explanation;
+  packet: EvidenceItem[];
+  context?: {
+    canary?: string;
+    root_cause_code?: string;
+    used_mem_id?: string | null;
+    subject_id?: string;
+    hitTypesByRef?: Record<string, string>;
+  };
+  expected: {
+    verified: boolean;
+    error_rule?: string | null;
+  };
 }
 
-async function main() {
-  console.log("=== Antibody Seed & Fixture Evaluation ===");
-  console.log();
+function runSeedEval() {
+  console.log("============================================================");
+  console.log("Antibody Seed & Fixture Evaluation (eval:seed)");
+  console.log("============================================================\n");
 
-  // 1. Evaluate Seed Attacks
-  console.log("[1/3] Validating Seed Attack Library (data/sample/attacks.json)...");
-  const rawAttacks = loadJson<unknown[]>("data/sample/attacks.json");
-  const validatedAttacks: Attack[] = [];
-  let supportCount = 0;
-  let meetingCount = 0;
+  let totalTests = 0;
+  let totalPassed = 0;
 
-  for (const raw of rawAttacks) {
-    const atk = AttackSchema.parse(raw);
-    validatedAttacks.push(atk);
-    if (atk.target_scope.includes("support_triage")) supportCount++;
-    if (atk.target_scope.includes("meeting_tasks")) meetingCount++;
-  }
-
-  console.log(
-    `  PASS: ${validatedAttacks.length} seed attacks validated (support_triage: ${supportCount}, meeting_tasks: ${meetingCount})`
-  );
-  console.log();
-
-  // 2. Load Policies & Regression Tasks
-  const rawPolicies = loadJson<unknown[]>("data/sample/policies.json");
-  const policies = new Map<string, Policy>();
+  // 1. Load policies & regression tasks
+  const rawPolicies = loadSampleJson<unknown[]>("policies.json");
+  const policies: Record<string, Policy> = {};
   for (const p of rawPolicies) {
-    const policy = PolicySchema.parse(p);
-    policies.set(policy.target_id, policy);
+    const parsed = PolicySchema.parse(p);
+    policies[parsed.target_id] = parsed;
   }
 
-  const regSupport = loadJson<unknown[]>("data/sample/regression_support_triage.json").map((t) =>
+  const regSupport = loadSampleJson<unknown[]>("regression_support_triage.json").map((t) =>
     RegressionTaskSchema.parse(t)
   );
-  const regMeeting = loadJson<unknown[]>("data/sample/regression_meeting_tasks.json").map((t) =>
+  const regMeeting = loadSampleJson<unknown[]>("regression_meeting_tasks.json").map((t) =>
     RegressionTaskSchema.parse(t)
   );
-  const regressionTasks = new Map<string, RegressionTask>();
+  const allRegressionTasks = new Map<string, RegressionTask>();
   for (const t of [...regSupport, ...regMeeting]) {
-    regressionTasks.set(t.task_id, t);
+    allRegressionTasks.set(t.task_id, t);
   }
 
-  // 3. Evaluate Judge Fixtures (J-01 to J-20)
-  console.log("[2/3] Evaluating Judge Fixtures (J-01 to J-20)...");
-  const judgeData = loadJson<JudgeDataFile>("data/sample/judge_fixtures.json");
-  let judgePassed = 0;
-  const judgeFailed: string[] = [];
+  // 2. Judge Fixtures
+  console.log("[1/3] Evaluating Deterministic Judge Attack Fixtures (J-01..J-20)...");
+  const judgeData = loadSampleJson<JudgeDataFile>("judge_fixtures.json");
+  let judgeAttackPass = 0;
 
-  for (const fixture of judgeData.judge_fixtures) {
-    const policy = policies.get(fixture.policy);
+  for (const f of judgeData.judge_fixtures) {
+    totalTests++;
+    const policy = policies[f.policy];
     if (!policy) {
-      judgeFailed.push(`${fixture.id}: Policy ${fixture.policy} not found`);
+      console.error(`  FAIL ${f.id}: Unknown policy ${f.policy}`);
       continue;
     }
+    const verdict = judgeRun(f.run, policy, f.canary, f.ctx);
+    const observedHitTypes = Array.from(new Set(verdict.hits.map((h) => h.hit_type))).sort();
+    const expectedHitTypes = [...f.expected.hit_types].sort();
 
-    const verdict = judgeRun(fixture.run, policy, fixture.canary, fixture.ctx);
-    const hitTypes = verdict.hits.map((h) => h.hit_type).sort();
-    const expectedHitTypes = [...fixture.expected.hit_types].sort();
+    const verdictMatch = verdict.verdict === f.expected.verdict;
+    const hitTypesMatch = JSON.stringify(observedHitTypes) === JSON.stringify(expectedHitTypes);
 
-    const verdictMatches = verdict.verdict === fixture.expected.verdict;
-    const hitTypesMatch =
-      hitTypes.length === expectedHitTypes.length &&
-      hitTypes.every((ht, idx) => ht === expectedHitTypes[idx]);
-
-    if (verdictMatches && hitTypesMatch) {
-      judgePassed++;
+    if (verdictMatch && hitTypesMatch) {
+      judgeAttackPass++;
+      totalPassed++;
+      console.log(`  PASS ${f.id}: ${verdict.verdict} (hits: [${observedHitTypes.join(", ")}])`);
     } else {
-      judgeFailed.push(
-        `${fixture.id}: expected verdict=${fixture.expected.verdict} hits=[${expectedHitTypes.join(", ")}], got verdict=${verdict.verdict} hits=[${hitTypes.join(", ")}]`
+      console.error(
+        `  FAIL ${f.id}: got verdict=${verdict.verdict} (expected=${f.expected.verdict}), hits=[${observedHitTypes.join(", ")}] (expected=[${expectedHitTypes.join(", ")}])`
       );
     }
   }
+  console.log(`  => ${judgeAttackPass}/${judgeData.judge_fixtures.length} Attack Fixtures Passed\n`);
 
-  if (judgeFailed.length === 0) {
-    console.log(`  PASS: ${judgePassed}/${judgeData.judge_fixtures.length} judge fixtures passed`);
-  } else {
-    console.error(`  FAIL: ${judgeFailed.length} judge fixtures failed:`);
-    for (const f of judgeFailed) console.error(`   - ${f}`);
-  }
-  console.log();
+  // 3. Regression Fixtures
+  console.log("[2/3] Evaluating Regression Task Fixtures (R-01..R-04)...");
+  let judgeRegPass = 0;
 
-  // 4. Evaluate Regression Fixtures (R-01 to R-04)
-  console.log("[3/3] Evaluating Regression Fixtures (R-01 to R-04)...");
-  let regPassed = 0;
-  const regFailed: string[] = [];
-
-  for (const fixture of judgeData.regression_fixtures) {
-    const policy = policies.get(fixture.policy);
-    const task = regressionTasks.get(fixture.task_id);
-
+  for (const f of judgeData.regression_fixtures) {
+    totalTests++;
+    const policy = policies[f.policy];
+    const task = allRegressionTasks.get(f.task_id);
     if (!policy || !task) {
-      regFailed.push(`${fixture.id}: missing policy or task`);
+      console.error(`  FAIL ${f.id}: missing policy or task`);
       continue;
     }
 
-    const res = evaluateRegressionTask(task, fixture.run, policy, fixture.canary);
+    const regResult = evaluateRegressionTask(task, f.run, policy, f.canary);
+    const passedMatch = regResult.passed === f.expected.passed;
+    const failedChecksMatch =
+      JSON.stringify([...regResult.failed_checks].sort()) === JSON.stringify([...f.expected.failed_checks].sort());
 
-    const passMatches = res.passed === fixture.expected.passed;
-    const checksMatch =
-      res.failed_checks.length === fixture.expected.failed_checks.length &&
-      res.failed_checks.every((r, i) => r === fixture.expected.failed_checks[i]);
-
-    if (passMatches && checksMatch) {
-      regPassed++;
+    if (passedMatch && failedChecksMatch) {
+      judgeRegPass++;
+      totalPassed++;
+      console.log(
+        `  PASS ${f.id}: ${regResult.passed ? "passed" : "failed"} (checks: [${regResult.failed_checks.join(", ")}])`
+      );
     } else {
-      regFailed.push(
-        `${fixture.id}: expected passed=${fixture.expected.passed} checks=[${fixture.expected.failed_checks.join(", ")}], got passed=${res.passed} reasons=[${res.failed_checks.join(", ")}]`
+      console.error(
+        `  FAIL ${f.id}: got passed=${regResult.passed} (expected=${f.expected.passed}), failed_checks=[${regResult.failed_checks.join(", ")}] (expected=[${f.expected.failed_checks.join(", ")}])`
       );
     }
   }
+  console.log(`  => ${judgeRegPass}/${judgeData.regression_fixtures.length} Regression Fixtures Passed\n`);
 
-  if (regFailed.length === 0) {
-    console.log(`  PASS: ${regPassed}/${judgeData.regression_fixtures.length} regression fixtures passed`);
-  } else {
-    console.error(`  FAIL: ${regFailed.length} regression fixtures failed:`);
-    for (const f of regFailed) console.error(`   - ${f}`);
+  // 4. Explanation Fixtures
+  console.log("[3/3] Evaluating Explanation Validation Fixtures (X-01..X-12)...");
+  const explanationFixtures = loadSampleJson<ExplanationFixture[]>("explanation_fixtures.json");
+  let explainPass = 0;
+
+  for (const f of explanationFixtures) {
+    totalTests++;
+    const result = validateExplanation(f.explanation, f.packet, f.context || {});
+
+    const verifiedMatch = result.verified === f.expected.verified;
+    let errorMatch = true;
+    if (f.expected.error_rule) {
+      errorMatch = result.validation_errors.some((e) => e.startsWith(f.expected.error_rule!));
+    }
+
+    if (verifiedMatch && errorMatch) {
+      explainPass++;
+      totalPassed++;
+      console.log(
+        `  PASS ${f.id}: verified=${result.verified} ${result.validation_errors.length ? `(errors: [${result.validation_errors.join("; ")}])` : ""}`
+      );
+    } else {
+      console.error(
+        `  FAIL ${f.id}: got verified=${result.verified} (expected=${f.expected.verified}), errors=[${result.validation_errors.join("; ")}] (expected rule: "${f.expected.error_rule}")`
+      );
+    }
   }
-  console.log();
+  console.log(`  => ${explainPass}/${explanationFixtures.length} Explanation Fixtures Passed\n`);
 
   // Summary
-  const totalFixtures = judgeData.judge_fixtures.length + judgeData.regression_fixtures.length;
-  const totalPassed = judgePassed + regPassed;
-
-  console.log("--------------------------------------------------");
-  console.log(`Summary: ${totalPassed}/${totalFixtures} fixtures passed with exact expected verdicts.`);
-  console.log(`Seed attacks verified: ${validatedAttacks.length}`);
-  console.log("--------------------------------------------------");
-
-  if (judgeFailed.length > 0 || regFailed.length > 0) {
+  console.log("============================================================");
+  console.log(`Summary: ${totalPassed}/${totalTests} fixtures passed (${Math.round((totalPassed / totalTests) * 100)}%)`);
+  if (totalPassed === totalTests) {
+    console.log("Status: ALL PASS");
+    console.log("============================================================\n");
+  } else {
+    console.error("Status: FAILURES DETECTED");
+    console.log("============================================================\n");
     process.exit(1);
   }
-  process.exit(0);
 }
 
-main().catch((err) => {
-  console.error("Fatal error during seed evaluation:", err);
-  process.exit(1);
-});
+runSeedEval();
