@@ -684,6 +684,7 @@ describe("Task T-A5: Graph and Agents", () => {
             trials: 1,
             memory_mode: "off",
             seed: 42,
+            wait: true,
             custom_attacks: [],
           },
           {
