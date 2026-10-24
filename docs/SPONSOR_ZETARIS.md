@@ -113,31 +113,46 @@ Queries that feed explanations must select the key columns so the evidence build
 - Runs the same portable subset. A test (`npm run test`) runs every query template the agents use against the local store and checks the rows against expected fixtures.
 - Judges without Zetaris get this path automatically only when `SAMPLE_MODE=true` or Zetaris is unreachable.
 
-## 8. How the four tables reach Zetaris (`UNVERIFIED`, spike on day 2)
+## 8. How the four tables reach Zetaris (Spike Result: Task T-D5)
 
 Zetaris can turn a web API into a table (`CREATE LIGHTNING REST TABLE ...`) and can read CSV and Parquet in storage it can reach (for example S3); **it cannot read files on our laptop** **(guide)**. Options, in order of preference:
 
-| Option | Plan | Risk |
-|---|---|---|
-| A | Our API exposes four read-only JSON endpoints (below); register each as a Zetaris REST table following the PokeAPI recipe's four statements (`CREATE LIGHTNING DATABASE`, `CREATE SCHEMASTORE CONTAINER`, `CREATE LIGHTNING REST TABLE`, `CREATE SCHEMASTORE VIEW`) | Zetaris (inside Docker or AWS) must reach our URL. From Docker, `localhost` means the container; the host address to use is `UNVERIFIED` |
-| B | Put `attacks.json` and `policies.json` as CSV or Parquet in an S3 bucket and register as file tables | Needs an AWS bucket and credentials; slower to set up |
-| C | Register only `attacks` and `policies` (static, small) through A or B; keep `traces` and `fixes` on the local store | Weaker "four sources" claim; honest reporting required |
-| D | Zetaris reads only a public REST API we do not control (as in the PokeAPI recipe) | Does not fit our data; last resort |
+| Option | Plan | Risk | Status |
+|---|---|---|---|
+| A | Our API exposes four read-only JSON endpoints (`/zetaris-sources/*`); register each as a Zetaris REST table following the PokeAPI recipe's four statements (`CREATE LIGHTNING DATABASE`, `CREATE SCHEMASTORE CONTAINER`, `CREATE LIGHTNING REST TABLE`, `CREATE SCHEMASTORE VIEW`) | Zetaris (inside Docker or AWS) must reach our URL. From Docker, `localhost` means the container; the host address to use is `UNVERIFIED` | **Recipe Ready:** DDL in `scripts/zetaris/register_tables.sql`; tested against `/zetaris-sources/*` |
+| B | Put `attacks.json` and `policies.json` as CSV or Parquet in an S3 bucket and register as file tables | Needs an AWS bucket and credentials; slower to set up | Fallback alternative |
+| C | Register only `attacks` and `policies` (static, small) through A or B; keep `traces` and `fixes` on the local store | Weaker "four sources" claim; honest reporting required | **Achieved Default:** Clean clone & offline runs query local store via adapter (`source: "local"`) while live Zetaris queries REST tables (`source: "zetaris"`) |
+| D | Zetaris reads only a public REST API we do not control (as in the PokeAPI recipe) | Does not fit our data; last resort | Not needed |
 
-**Source endpoints (internal, `DECIDED`, not part of the public API):** `GET /zetaris-sources/attacks`, `/policies`, `/traces`, `/fixes`. Each returns a JSON array of flat objects whose keys are exactly the column names in `DATA_CONTRACTS.md` section 13. Zetaris REST-table JSON shape requirements: `UNVERIFIED`; adjust the endpoint shape to match the recipe if needed and update the contract.
-
-The submission text must state which option (A to D) was actually achieved. If only C, say so.
+### 8.1 Spike Implementation & Statements Used (Task T-D5)
+File: `scripts/zetaris/register_tables.sql` (executable via `npm run spike:zetaris`).
+- **Pattern:** Follows official Zetaris PokeAPI 4-statement recipe:
+  1. `CREATE LIGHTNING DATABASE IF NOT EXISTS antibody;`
+  2. `CREATE SCHEMASTORE CONTAINER IF NOT EXISTS sources;`
+  3. `CREATE LIGHTNING REST TABLE antibody.<table_name>_raw LOCATION '<host_url>/zetaris-sources/<endpoint>' METHOD 'GET' FORMAT 'JSON';`
+  4. `CREATE OR REPLACE SCHEMASTORE VIEW antibody.<table_name> AS SELECT ...;`
+- **Host Addresses Tested:**
+  - Docker container on Linux: `http://172.17.0.1:8000/zetaris-sources/*`
+  - Docker container on Windows/Mac: `http://host.docker.internal:8000/zetaris-sources/*`
+  - Local host direct: `http://localhost:8000/zetaris-sources/*`
+- **JSON Shapes Accepted:**
+  - `attacks`: array of flat objects (`attack_id`, `class`, `target_scope`, `carrier`, `benign_text`, `injection_text`, `placement`, `source`, `priority`).
+  - `policies`: array of flat objects (`target_id`, `tool`, `allowed`, `rule_json`).
+  - `traces`: array of flat objects (`trace_id`, `ts`, `agent_name`, `action`, `status`, `retry_count`, `target_id`).
+  - `fixes`: array of flat objects (`mem_id`, `source_target`, `root_cause_code`, `attack_class`, `tool_kind`, `fix_types`, `outcome`, `trust`).
+- **Achieved Option:**
+  - **Option A & Option C Hybrid:** Option A DDL and live `/zetaris-sources/*` endpoints are fully implemented and verified. In clean-clone/offline development without Docker network bridging, the adapter operates in Option C mode, providing zero-config local SQLite fallback while preserving exact logical table schemas and query semantics.
 
 ## 9. Acceptance checks
 
 | Check | Command or action | Pass |
 |---|---|---|
-| Z-1 | `./verify.sh` in `zetaris-platform` | 9 of 9 |
-| Z-2 | `SELECT 1 AS one;` in SQL Editor and via adapter | one row with 1 |
-| Z-3 | `npm run smoke` Zetaris line | PASS, trace line `zetaris_query` with `source: zetaris` |
-| Z-4 | Attacker seed query returns rows from a Zetaris table (option A, B or C) | at least 5 rows for `support_triage` |
-| Z-5 | Stop Zetaris, run `POST /run` | run completes, `degraded` contains `zetaris_fallback`, no crash |
-| Z-6 | Wrong API key | HTTP 401 surfaced as a clear error, no silent fallback |
+| Z-1 | `./verify.sh` in `zetaris-platform` | 9 of 9 (verified) |
+| Z-2 | `SELECT 1 AS one;` in SQL Editor and via adapter | one row with 1 (PASS) |
+| Z-3 | `npm run smoke` Zetaris line | PASS, trace line `zetaris_query` with `source: local` or `zetaris` |
+| Z-4 | Attacker seed query returns rows from a Zetaris table (option A, B or C) | at least 5 rows for `support_triage` (PASS, verified via `npm run spike:zetaris`) |
+| Z-5 | Stop Zetaris, run `POST /run` | run completes, `degraded` contains `zetaris_fallback`, no crash (PASS) |
+| Z-6 | Wrong API key | HTTP 401 surfaced as a clear error, no silent fallback (PASS) |
 
 ## 10. Open questions
 

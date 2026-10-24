@@ -19,7 +19,8 @@
     "eval:calibrate": "tsx scripts/calibrate.ts",
     "conformance:hmem": "tsx scripts/run-conformance-hmem.ts",
     "test:memory": "tsx scripts/run-memory-test.ts",
-    "demo:cold-warm": "tsx scripts/cold-warm.ts"
+    "demo:cold-warm": "tsx scripts/cold-warm.ts",
+    "spike:zetaris": "tsx scripts/zetaris-spike.ts"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
