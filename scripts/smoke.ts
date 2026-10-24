@@ -14,6 +14,7 @@ import { loadConfig } from "../src/config.js";
 import { generator } from "../src/adapters/llm/index.js";
 import { runSql } from "../src/adapters/zetaris.js";
 import { HMemFixMemory } from "../src/adapters/engines/hmem.js";
+import { createApiClient } from "./api-client.js";
 
 async function runSmokeTests() {
   const cfg = loadConfig();
@@ -69,6 +70,29 @@ async function runSmokeTests() {
     console.log(`PASS memory: H-MEM store ready (mode: warm, records: ${records.length})`);
   } catch (err: any) {
     console.error(`FAIL memory: ${err.message || String(err)}`);
+    allPassed = false;
+  }
+
+  // =========================================================================
+  // Check 4: End-to-End POST /run Report Check (README.md §8.4 / SM-7)
+  // =========================================================================
+  try {
+    const client = await createApiClient();
+    try {
+      const report = await client.run({
+        target: "support_triage",
+        attack_budget: 1,
+        trials: 1,
+        seed: 1,
+        memory_mode: "off",
+        wait: true,
+      });
+      console.log(`PASS run: POST /run returned valid Report (trace_id: ${report.trace_id}, readiness: ${report.readiness})`);
+    } finally {
+      await client.close();
+    }
+  } catch (err: any) {
+    console.error(`FAIL run: ${err.message || String(err)}`);
     allPassed = false;
   }
 

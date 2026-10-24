@@ -25,12 +25,15 @@ import {
 } from "../src/schemas.js";
 
 function extractPairMetrics(report: Report): PairMetrics {
-  // first_try_accepts: count of accepted fixes where attempt == 1
+  // first_try_accepts: count of accepted fixes where attempt == 1 (EVAL.md §10)
   let firstTryAccepts = 0;
   for (const f of report.findings) {
-    const acceptedFix = f.fixes.find((fix) => fix.status === "accepted" && fix.attempt === 1);
-    if (acceptedFix) {
-      firstTryAccepts++;
+    const acceptedVer = f.verifications.find((v) => v.verdict === "accept");
+    if (acceptedVer) {
+      const acceptedFix = f.fixes.find((fix) => fix.fix_id === acceptedVer.fix_id && fix.attempt === 1);
+      if (acceptedFix) {
+        firstTryAccepts++;
+      }
     }
   }
 
@@ -84,14 +87,15 @@ async function runColdWarmComparison() {
     const pairs: Array<{ cold: PairMetrics; warm: PairMetrics }> = [];
 
     for (let i = 1; i <= clampedPairs; i++) {
-      console.log(`[Step 3.${i}] Running Pair ${i}/${clampedPairs} on target ${target}:`);
+      const pairSeed = seed + (i - 1);
+      console.log(`[Step 3.${i}] Running Pair ${i}/${clampedPairs} on target ${target} (seed: ${pairSeed}):`);
 
       // Run B cold
       console.log(`  -> Running ${target} in COLD mode...`);
       const coldReport = await client.run({
         target,
         memory_mode: "cold",
-        seed: seed + i,
+        seed: pairSeed,
         trials: 1,
         attack_budget: 6,
         wait: true,
@@ -106,7 +110,7 @@ async function runColdWarmComparison() {
       const warmReport = await client.run({
         target,
         memory_mode: "warm",
-        seed: seed + i,
+        seed: pairSeed,
         trials: 1,
         attack_budget: 6,
         wait: true,
@@ -134,13 +138,13 @@ async function runColdWarmComparison() {
 
     const validated = ColdWarmComparisonSchema.parse(comparison);
 
-    // 5. Save to data/comparison/<timestamp>.json
+    // 5. Save to data/comparison/<YYYYMMDDTHHMMSSZ>.json per DATA_CONTRACTS.md §17
     const compDir = path.resolve(process.cwd(), "data/comparison");
     if (!fs.existsSync(compDir)) {
       fs.mkdirSync(compDir, { recursive: true });
     }
 
-    const safeTimestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const safeTimestamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
     const outPath = path.join(compDir, `${safeTimestamp}.json`);
     fs.writeFileSync(outPath, JSON.stringify(validated, null, 2) + "\n", "utf-8");
     console.log(`Comparison file written and validated: ${outPath}\n`);

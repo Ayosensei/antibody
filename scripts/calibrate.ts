@@ -108,10 +108,11 @@ async function runCalibration() {
         : MEETING_TASKS_BASELINE_CONFIG;
 
     const traceId = generateTraceId();
+    const canaryKey = `${policy.canary_prefix}420001`;
     const traceCtx: TraceContext = {
       traceId,
       logDir: path.resolve(process.cwd(), "logs"),
-      canaryKey: cfg.canary_key || "dev_canary_key",
+      canaryKey,
     };
 
     const suite = await runFinalVerification({

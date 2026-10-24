@@ -11,6 +11,7 @@ describe("Task T-D8: Eval & Demo Scripts", () => {
     expect(content).toContain("PASS model:");
     expect(content).toContain("PASS zetaris:");
     expect(content).toContain("PASS memory:");
+    expect(content).toContain("PASS run:");
   });
 
   it("scripts/seed-eval.ts exists and checks judge & explanation fixtures", () => {
