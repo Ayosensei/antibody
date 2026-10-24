@@ -137,7 +137,9 @@ export class HMemFixMemory implements FixMemory {
         idMap: Object.fromEntries(this.memIdToHmemId.entries()),
         supersededMap: Object.fromEntries(this.supersededByMemId.entries()),
       };
-      fs.writeFileSync(this.recordsFile, JSON.stringify(payload, null, 2) + "\n", "utf-8");
+      const tmpFile = `${this.recordsFile}.tmp`;
+      fs.writeFileSync(tmpFile, JSON.stringify(payload, null, 2) + "\n", "utf-8");
+      fs.renameSync(tmpFile, this.recordsFile);
     } catch (err) {
       this.handleError("store_memory", err as Error);
     }

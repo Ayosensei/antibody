@@ -31,7 +31,8 @@ import { recordTrace } from "../tracing.js";
 import {
   buildEvidencePacket,
   formatEvidencePacketPrompt,
-} from "../explain/evidence.js";
+  createFallbackFixExplanation,
+} from "../explain/index.js";
 import { validateExplanation } from "../explain/validate.js";
 import {
   FIXER_SYSTEM_PROMPT,
@@ -136,21 +137,12 @@ export function createFallbackFix(
   ];
 
   const policyRef = `${policySource}:policies/${policy.target_id}:${tool}`;
-  const explanation: Explanation = {
-    subject: "fix",
-    subject_id: fixId,
-    generated_by: "code",
-    verified: true,
-    validation_errors: [],
-    claims: [
-      {
-        claim_id: "c1",
-        kind: "decision",
-        text: `Fallback fix: gated tool ${tool} with human approval requirement.`,
-        evidence: [`diagnosis:${diagnosis.finding_id}`, policyRef],
-      },
-    ],
-  };
+  const explanation = createFallbackFixExplanation({
+    fix_id: fixId,
+    finding_id: diagnosis.finding_id,
+    tool,
+    policyRef,
+  });
 
   const expectedTypes = Array.from(deriveExpectedFixTypes(ops));
 

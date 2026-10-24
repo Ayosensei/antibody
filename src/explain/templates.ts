@@ -95,3 +95,28 @@ export function createReadinessExplanation(params: ReadinessTemplateParams): Exp
     ],
   };
 }
+
+export interface FallbackFixTemplateParams {
+  fix_id: string;
+  finding_id: string;
+  tool: string;
+  policyRef: string;
+}
+
+export function createFallbackFixExplanation(params: FallbackFixTemplateParams): Explanation {
+  return {
+    subject: "fix",
+    subject_id: params.fix_id,
+    generated_by: "code",
+    verified: true,
+    validation_errors: [],
+    claims: [
+      {
+        claim_id: "c1",
+        kind: "decision",
+        text: `Fallback fix: gated tool ${params.tool} with human approval requirement.`.slice(0, 240),
+        evidence: [`diagnosis:${params.finding_id}`, params.policyRef],
+      },
+    ],
+  };
+}

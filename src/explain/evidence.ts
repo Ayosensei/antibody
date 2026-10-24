@@ -37,6 +37,24 @@ export interface BuildEvidencePacketParams {
   priorFixes?: Fix[];
   suiteBefore?: SuiteResult;
   suiteAfter?: SuiteResult;
+  traceId?: string;
+}
+
+const canaryRegexCache = new Map<string, { exactRe: RegExp; fuzzyRe: RegExp }>();
+
+function getCanaryRegexes(canary: string): { exactRe: RegExp; fuzzyRe: RegExp } {
+  let cached = canaryRegexCache.get(canary);
+  if (!cached) {
+    const escaped = canary.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const exactRe = new RegExp(escaped, "gi");
+    const normCanary = normalizeCanary(canary);
+    const chars = normCanary.split("").map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    const fuzzyPattern = chars.join("[\\s\\-_]*");
+    const fuzzyRe = new RegExp(fuzzyPattern, "gi");
+    cached = { exactRe, fuzzyRe };
+    canaryRegexCache.set(canary, cached);
+  }
+  return cached;
 }
 
 /**
@@ -52,10 +70,14 @@ export function maskCanary(text: string, canary?: string): string {
   }
   const normCanary = normalizeCanary(canary);
   if (normCanary.length > 0 && normalizeCanary(result).includes(normCanary)) {
-    // Replace case-insensitively or token-wisely
-    const escaped = canary.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const re = new RegExp(escaped, "gi");
-    result = result.replace(re, "CANARY-***");
+    const { exactRe, fuzzyRe } = getCanaryRegexes(canary);
+    // 1. Try direct case-insensitive match
+    result = result.replace(exactRe, "CANARY-***");
+
+    // 2. If still present in normalized form, match fuzzy chars allowing optional whitespace/hyphen/underscore
+    if (normalizeCanary(result).includes(normCanary)) {
+      result = result.replace(fuzzyRe, "CANARY-***");
+    }
   }
   return result;
 }
@@ -77,7 +99,7 @@ export function sanitizeSnippet(text: string, canary?: string): string {
 export function buildEvidencePacket(params: BuildEvidencePacketParams): EvidenceItem[] {
   const items: EvidenceItem[] = [];
   const canary = params.canary;
-  const targetId = params.targetId || params.policy?.target_id || "target";
+  const targetId = params.targetId || params.policy?.target_id || params.config?.target_id || "target";
 
   // 1. Attack item
   if (params.attack) {
@@ -165,6 +187,19 @@ export function buildEvidencePacket(params: BuildEvidencePacketParams): Evidence
         canary
       ),
     });
+    for (const [toolName, perm] of Object.entries(params.config.tool_permissions)) {
+      if (perm) {
+        items.push({
+          ref: `config:${targetId}@v${v}/tool_permissions.${toolName}`,
+          kind: "config",
+          source: "config",
+          snippet: sanitizeSnippet(
+            `tool_permissions.${toolName}: ${JSON.stringify(perm)}`,
+            canary
+          ),
+        });
+      }
+    }
     items.push({
       ref: `config:${targetId}@v${v}/input_filters`,
       kind: "config",
@@ -242,6 +277,16 @@ export function buildEvidencePacket(params: BuildEvidencePacketParams): Evidence
         `Final suite: asr=${params.suiteAfter.asr}, hits=${hits}/${params.suiteAfter.attacks.length}`,
         canary
       ),
+    });
+  }
+
+  // 10. Trace item
+  if (params.traceId) {
+    items.push({
+      ref: `trace:${params.traceId}`,
+      kind: "trace",
+      source: "trace",
+      snippet: sanitizeSnippet(`Execution trace ${params.traceId}`, canary),
     });
   }
 

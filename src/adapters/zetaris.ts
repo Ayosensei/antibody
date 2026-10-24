@@ -80,23 +80,39 @@ function extractZetarisColumns(json: any, sql: string): string[] {
  * 5. Every call writes a System/zetaris_query trace line.
  * 6. Never logs the API key.
  */
+export class ZetarisConfigError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+    this.name = "ZetarisConfigError";
+  }
+}
+
+let cachedZetarisConfig: ReturnType<typeof loadConfig> | null = null;
+function getCachedConfig(): ReturnType<typeof loadConfig> | null {
+  if (!cachedZetarisConfig) {
+    try {
+      cachedZetarisConfig = loadConfig();
+    } catch {
+      // defaults if config loading fails in custom test harness
+    }
+  }
+  return cachedZetarisConfig;
+}
+
 export async function runSql(sql: string, opts?: ZetarisOptions): Promise<SqlResult> {
   // 1. Validate against the portable SQL subset first
   validatePortableSql(sql);
 
-  // 2. Resolve configuration parameters
-  let cfg: ReturnType<typeof loadConfig> | null = null;
-  try {
-    cfg = loadConfig();
-  } catch {
-    // defaults if config loading fails in custom test harness
-  }
-
-  const sampleMode = opts?.sampleMode ?? cfg?.sample_mode ?? (process.env.SAMPLE_MODE === "true");
-  const restUrl = (opts?.restUrl ?? cfg?.zetaris_rest_url ?? process.env.ZETARIS_REST_URL ?? "http://localhost:8888/api/v1.0").replace(/\/+$/, "");
-  const orgId = opts?.orgId ?? cfg?.zetaris_org_id ?? process.env.ZETARIS_ORG_ID ?? "1";
-  const apiKey = opts?.apiKey ?? cfg?.zetaris_api_key ?? process.env.ZETARIS_API_KEY;
-  const timeoutSeconds = opts?.timeoutSeconds ?? cfg?.zetaris_timeout_seconds ?? 20;
+  // 2. Resolve configuration parameters (lazily using cached config if needed)
+  const sampleMode =
+    opts?.sampleMode ?? (process.env.SAMPLE_MODE !== undefined ? process.env.SAMPLE_MODE === "true" : getCachedConfig()?.sample_mode ?? false);
+  const restUrl = (
+    opts?.restUrl ?? process.env.ZETARIS_REST_URL ?? getCachedConfig()?.zetaris_rest_url ?? "http://localhost:8888/api/v1.0"
+  ).replace(/\/+$/, "");
+  const orgId = opts?.orgId ?? process.env.ZETARIS_ORG_ID ?? getCachedConfig()?.zetaris_org_id ?? "1";
+  const apiKey = opts?.apiKey ?? process.env.ZETARIS_API_KEY ?? getCachedConfig()?.zetaris_api_key;
+  const timeoutSeconds =
+    opts?.timeoutSeconds ?? (process.env.ZETARIS_TIMEOUT_SECONDS ? Number(process.env.ZETARIS_TIMEOUT_SECONDS) : getCachedConfig()?.zetaris_timeout_seconds ?? 20);
   const traceId = opts?.traceId ?? defaultTraceId();
   const targetAgent = opts?.targetAgent ?? "Zetaris";
   const fetchImpl = opts?.fetchFn ?? fetch;
@@ -264,7 +280,7 @@ export async function runSql(sql: string, opts?: ZetarisOptions): Promise<SqlRes
       } catch {
         // Non-blocking
       }
-      throw new Error(`Zetaris request failed with HTTP ${res.status}: configuration or authentication error`);
+      throw new ZetarisConfigError(res.status, `Zetaris request failed with HTTP ${res.status}: configuration or authentication error`);
     }
 
     if (!res.ok) {
@@ -274,7 +290,7 @@ export async function runSql(sql: string, opts?: ZetarisOptions): Promise<SqlRes
     return await handleSuccess(res, 0);
   } catch (err: any) {
     // If it's a 400/401, rethrow immediately without retrying or fallback (Rule 3 & Check Z-6)
-    if (err.message?.includes("HTTP 400") || err.message?.includes("HTTP 401")) {
+    if (err instanceof ZetarisConfigError || err.message?.includes("HTTP 400") || err.message?.includes("HTTP 401")) {
       throw err;
     }
 
@@ -301,7 +317,7 @@ export async function runSql(sql: string, opts?: ZetarisOptions): Promise<SqlRes
         } catch {
           // Non-blocking
         }
-        throw new Error(`Zetaris request failed with HTTP ${retryRes.status}: configuration or authentication error`);
+        throw new ZetarisConfigError(retryRes.status, `Zetaris request failed with HTTP ${retryRes.status}: configuration or authentication error`);
       }
 
       if (!retryRes.ok) {
@@ -310,7 +326,7 @@ export async function runSql(sql: string, opts?: ZetarisOptions): Promise<SqlRes
 
       return await handleSuccess(retryRes, 1);
     } catch (retryErr: any) {
-      if (retryErr.message?.includes("HTTP 400") || retryErr.message?.includes("HTTP 401")) {
+      if (retryErr instanceof ZetarisConfigError || retryErr.message?.includes("HTTP 400") || retryErr.message?.includes("HTTP 401")) {
         throw retryErr;
       }
 

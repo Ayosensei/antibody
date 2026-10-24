@@ -143,7 +143,18 @@ describe("Task T-D4: Local SQLite & Zetaris Adapter", () => {
     });
 
     it("parses wildcard and function calls", () => {
-      expect(parseSelectedColumnsFromSql("SELECT * FROM attacks")).toEqual(["*"]);
+      expect(parseSelectedColumnsFromSql("SELECT * FROM attacks")).toEqual([
+        "attack_id",
+        "class",
+        "target_scope",
+        "carrier",
+        "benign_text",
+        "injection_text",
+        "placement",
+        "source",
+        "priority",
+      ]);
+      expect(parseSelectedColumnsFromSql("SELECT * FROM unknown_table")).toEqual(["*"]);
       expect(parseSelectedColumnsFromSql("SELECT COUNT(*) AS total FROM attacks")).toEqual(["total"]);
     });
   });
