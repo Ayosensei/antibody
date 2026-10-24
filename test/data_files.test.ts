@@ -28,6 +28,7 @@ const policies = readSampleJson("policies.json");
 const regSupport = readSampleJson("regression_support_triage.json");
 const regMeeting = readSampleJson("regression_meeting_tasks.json");
 const judgeData = readSampleJson("judge_fixtures.json");
+const explanationData = readSampleJson("explanation_fixtures.json");
 
 function extractAllStrings(obj: unknown): string[] {
   const strings: string[] = [];
@@ -183,7 +184,7 @@ describe("T-D3 Data Files Verification", () => {
   });
 
   it("enforces safety rules: no URLs and emails strictly end with @example.test", () => {
-    const allContents = [attacks, policies, regSupport, regMeeting, judgeData];
+    const allContents = [attacks, policies, regSupport, regMeeting, judgeData, explanationData];
     const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
     const urlRegex = /https?:\/\//i;
 

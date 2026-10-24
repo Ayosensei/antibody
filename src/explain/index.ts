@@ -20,7 +20,9 @@ export {
   createVerificationExplanation,
   createUnresolvedExplanation,
   createReadinessExplanation,
+  createFallbackFixExplanation,
   type VerificationTemplateParams,
   type UnresolvedTemplateParams,
   type ReadinessTemplateParams,
+  type FallbackFixTemplateParams,
 } from "./templates.js";

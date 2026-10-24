@@ -101,8 +101,11 @@ export function validateExplanation(
       const hasPolicyOrConfigRef = allRefs.some(
         (r) => r.includes(":policies/") || r.startsWith("config:")
       );
-      if (!hasDiagnosisRef || !hasPolicyOrConfigRef) {
-        errors.push("V-4: Fix explanation must cite a 'diagnosis:' ref and either a policy row ref or 'config:' ref across its claims");
+      if (!hasDiagnosisRef) {
+        errors.push("V-4: Fix explanation must cite a 'diagnosis:<finding_id>' ref across its claims");
+      }
+      if (!hasPolicyOrConfigRef) {
+        errors.push("V-4: Fix explanation must cite either a policy row ref or 'config:' ref across its claims");
       }
       if (ctx.used_mem_id) {
         const hasMemRef = allRefs.some((r) => r === `memory:${ctx.used_mem_id}`);
@@ -160,7 +163,16 @@ export function validateExplanation(
         if (claim.kind === "cause") {
           for (const ref of claim.evidence) {
             if (ref.startsWith("hit:")) {
-              const hitType = ctx.hitTypesByRef?.[ref];
+              let hitType = ctx.hitTypesByRef?.[ref];
+              if (!hitType) {
+                const item = packetMap.get(ref);
+                if (item && item.kind === "hit") {
+                  const match = item.snippet.match(/Hit \[([a-zA-Z0-9_]+)\]/);
+                  if (match) {
+                    hitType = match[1];
+                  }
+                }
+              }
               if (hitType) {
                 if (allowed === "none" || !allowed.includes(hitType)) {
                   errors.push(
@@ -181,6 +193,8 @@ export function validateExplanation(
       const item = packetMap.get(ref);
       if (item && item.source !== "zetaris") {
         errors.push(`V-7: Ref '${ref}' is labelled 'zetaris:' but packet source is '${item.source}'`);
+      } else if (!item && packetMap.has(ref.replace(/^zetaris:/, "local:"))) {
+        errors.push(`V-7: Ref '${ref}' is labelled 'zetaris:' but only a local row exists in the packet`);
       }
     }
   }

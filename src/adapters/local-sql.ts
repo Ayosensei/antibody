@@ -101,6 +101,40 @@ export function validatePortableSql(rawSql: string): void {
   }
 }
 
+const TABLE_COLUMNS: Record<string, string[]> = {
+  attacks: [
+    "attack_id",
+    "class",
+    "target_scope",
+    "carrier",
+    "benign_text",
+    "injection_text",
+    "placement",
+    "source",
+    "priority",
+  ],
+  policies: ["target_id", "tool", "allowed", "rule_json"],
+  traces: [
+    "trace_id",
+    "ts",
+    "agent_name",
+    "action",
+    "status",
+    "retry_count",
+    "target_id",
+  ],
+  fixes: [
+    "mem_id",
+    "source_target",
+    "root_cause_code",
+    "attack_class",
+    "tool_kind",
+    "fix_types",
+    "outcome",
+    "trust",
+  ],
+};
+
 /**
  * Extracts selected column names from a portable SELECT statement.
  */
@@ -113,7 +147,14 @@ export function parseSelectedColumnsFromSql(rawSql: string): string[] {
   const match = withoutComments.match(/^SELECT\s+([\s\S]+?)(?:\s+FROM\b|\s*;?\s*$)/i);
   if (!match) return [];
   const colPart = match[1].trim();
-  if (colPart === "*") return ["*"];
+  if (colPart === "*") {
+    const tableMatch = withoutComments.match(/\bFROM\s+([a-zA-Z0-9_]+)/i);
+    const tableName = tableMatch?.[1]?.toLowerCase();
+    if (tableName && TABLE_COLUMNS[tableName]) {
+      return [...TABLE_COLUMNS[tableName]];
+    }
+    return ["*"];
+  }
 
   // Split by comma at depth 0 (outside parentheses like COUNT(*))
   const parts: string[] = [];
@@ -162,9 +203,12 @@ let singletonDb: Database.Database | null = null;
 const stmtCache = new WeakMap<Database.Database, Map<string, Database.Statement>>();
 const refreshSigCache = new WeakMap<Database.Database, { traces?: string; fixes?: string }>();
 
-function computeDirSignature(dirPath: string, ext: string): string {
+function computeDirSignature(dirPath: string, ext: string, ignoreFile?: string): string {
   if (!fs.existsSync(dirPath)) return "empty";
-  const files = fs.readdirSync(dirPath).filter((f) => f.endsWith(ext)).sort();
+  const files = fs
+    .readdirSync(dirPath)
+    .filter((f) => f.endsWith(ext) && (!ignoreFile || f !== ignoreFile))
+    .sort();
   if (files.length === 0) return "empty";
   return files
     .map((f) => {
@@ -342,7 +386,7 @@ export function refreshTracesFromLogs(db: Database.Database, logDir?: string): v
 
 export function refreshFixesFromMemory(db: Database.Database, memoryDir?: string): void {
   const baseMemoryDir = memoryDir ?? path.resolve(process.cwd(), "data/memory");
-  const sig = computeDirSignature(baseMemoryDir, ".json");
+  const sig = computeDirSignature(baseMemoryDir, ".json", "state.json");
   const cached = refreshSigCache.get(db) ?? {};
   if (cached.fixes === sig) return; // 0ms fast exit if directory unchanged
 
