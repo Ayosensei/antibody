@@ -14,12 +14,12 @@
     "check:env": "tsx scripts/check-env.ts",
     "test": "vitest run",
     "lint": "eslint .",
-    "smoke": "node scripts/stub.js T-A8",
-    "eval:seed": "node scripts/stub.js T-D6",
-    "eval:calibrate": "node scripts/stub.js T-D6",
+    "smoke": "tsx scripts/smoke.ts",
+    "eval:seed": "tsx scripts/seed-eval.ts",
+    "eval:calibrate": "tsx scripts/calibrate.ts",
     "conformance:hmem": "tsx scripts/run-conformance-hmem.ts",
     "test:memory": "tsx scripts/run-memory-test.ts",
-    "demo:cold-warm": "node scripts/stub.js T-A8"
+    "demo:cold-warm": "tsx scripts/cold-warm.ts"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
