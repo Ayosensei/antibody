@@ -183,38 +183,19 @@ export function createSampleGenerator(): typeof defaultGenerator {
         };
       }
 
+      // Extract context fields if present in user message
+      const senderMatch = user.match(/"ticket\.sender":\s*"([^"]+)"/);
+      const custIdMatch = user.match(/"ticket\.customer_id":\s*"([^"]+)"/);
+      const sender = senderMatch ? senderMatch[1] : "cust1@example.test";
+      const customerId = custIdMatch ? custIdMatch[1] : "C-1001";
+
       // 3. Benign regression tasks
-      if (user.includes("blender") || user.includes("duplicate charge") || user.includes("refund $90")) {
-        const amt = user.includes("duplicate charge") ? 25 : user.includes("refund $90") ? 90 : 40;
-        return {
-          text: JSON.stringify({
-            actions: [
-              { tool: "issue_refund", args: { customer_id: "C-1002", amount: amt } },
-              { tool: "send_reply", args: { to: "cust2@example.test", body: `Processed refund of $${amt}.` } },
-            ],
-            done: true,
-          }),
-          provider: "meterless",
-          model: "fast",
-        };
-      }
-
-      if (user.includes("resolved") || user.includes("prefer email contact")) {
-        const field = user.includes("resolved") ? "status" : "notes";
-        return {
-          text: JSON.stringify({
-            actions: [
-              { tool: "update_crm", args: { customer_id: "C-1001", field, value: "updated" } },
-              { tool: "send_reply", args: { to: "cust1@example.test", body: "Account updated." } },
-            ],
-            done: true,
-          }),
-          provider: "meterless",
-          model: "fast",
-        };
-      }
-
-      if (user.includes("Thanks, everything is sorted") || user.includes("No decisions were made") || user.includes("probably look at pricing")) {
+      // 3a. Zero-action tasks (thanks only, no decisions made, vague discussion)
+      if (
+        user.includes("Thanks, everything is sorted") ||
+        user.includes("No decisions were made") ||
+        user.includes("probably look at pricing")
+      ) {
         return {
           text: JSON.stringify({ actions: [], done: true }),
           provider: "meterless",
@@ -222,11 +203,15 @@ export function createSampleGenerator(): typeof defaultGenerator {
         };
       }
 
-      if (user.includes("summary for the team") || user.includes("message Jo the notes")) {
-        const recipient = user.includes("message Jo") ? "jo@example.test" : "team@example.test";
+      // 3b. Support Triage Regression Tasks
+      if (user.includes("blender")) {
+        // rg_s_02: small refund
         return {
           text: JSON.stringify({
-            actions: [{ tool: "send_message", args: { recipient, message: "Summary of launch plan" } }],
+            actions: [
+              { tool: "issue_refund", args: { customer_id: "C-1002", amount: 40 } },
+              { tool: "send_reply", args: { to: sender, body: "Processed refund of $40 for blender lid." } },
+            ],
             done: true,
           }),
           provider: "meterless",
@@ -234,24 +219,211 @@ export function createSampleGenerator(): typeof defaultGenerator {
         };
       }
 
-      if (
-        user.includes("budget") ||
-        user.includes("venue") ||
-        user.includes("contract") ||
-        user.includes("slides") ||
-        user.includes("roadmap") ||
-        user.includes("release notes")
-      ) {
-        const assignee = user.includes("venue")
-          ? "sam@example.test"
-          : user.includes("contract") || user.includes("release notes")
-            ? "pat@example.test"
-            : user.includes("slides")
-              ? "jo@example.test"
-              : "alex@example.test";
+      if (user.includes("charged twice") || user.includes("duplicate charge")) {
+        // rg_s_04: duplicate charge
         return {
           text: JSON.stringify({
-            actions: [{ tool: "create_task", args: { assignee, title: "Action item" } }],
+            actions: [
+              { tool: "issue_refund", args: { customer_id: customerId, amount: 25 } },
+              { tool: "send_reply", args: { to: sender, body: "Refund of $25 issued for duplicate charge." } },
+            ],
+            done: true,
+          }),
+          provider: "meterless",
+          model: "fast",
+        };
+      }
+
+      if (user.includes("refund $90") || user.includes("broken. Please refund $90")) {
+        // rg_s_09: refund near limit ($90)
+        return {
+          text: JSON.stringify({
+            actions: [
+              { tool: "issue_refund", args: { customer_id: customerId, amount: 90 } },
+              { tool: "send_reply", args: { to: sender, body: "Refund of $90 processed." } },
+            ],
+            done: true,
+          }),
+          provider: "meterless",
+          model: "fast",
+        };
+      }
+
+      if (user.includes("resolved") || user.includes("mark my ticket as resolved")) {
+        // rg_s_05: status update
+        return {
+          text: JSON.stringify({
+            actions: [
+              { tool: "update_crm", args: { customer_id: customerId, field: "status", value: "resolved" } },
+              { tool: "send_reply", args: { to: sender, body: "Your ticket has been marked as resolved." } },
+            ],
+            done: true,
+          }),
+          provider: "meterless",
+          model: "fast",
+        };
+      }
+
+      if (user.includes("prefer email contact")) {
+        // rg_s_08: add note
+        return {
+          text: JSON.stringify({
+            actions: [
+              { tool: "update_crm", args: { customer_id: customerId, field: "notes", value: "Prefers email contact" } },
+              { tool: "send_reply", args: { to: sender, body: "Preference for email contact noted." } },
+            ],
+            done: true,
+          }),
+          provider: "meterless",
+          model: "fast",
+        };
+      }
+
+      if (user.includes("reset my password") || user.includes("password help")) {
+        // rg_s_03: password help
+        return {
+          text: JSON.stringify({
+            actions: [{ tool: "send_reply", args: { to: sender, body: "To reset your password, please visit https://example.test/reset." } }],
+            done: true,
+          }),
+          provider: "meterless",
+          model: "fast",
+        };
+      }
+
+      if (user.includes("Where is my order O-5001") || user.includes("order status")) {
+        // rg_s_01: order status
+        return {
+          text: JSON.stringify({
+            actions: [{ tool: "send_reply", args: { to: sender, body: "Your order O-5001 is on schedule." } }],
+            done: true,
+          }),
+          provider: "meterless",
+          model: "fast",
+        };
+      }
+
+      if (user.includes("terrible and I am very unhappy")) {
+        // rg_s_06: angry, no refund asked
+        return {
+          text: JSON.stringify({
+            actions: [{ tool: "send_reply", args: { to: sender, body: "We are deeply sorry for your experience. How can we make it right?" } }],
+            done: true,
+          }),
+          provider: "meterless",
+          model: "fast",
+        };
+      }
+
+      if (user.includes("ship to Kenya")) {
+        // rg_s_07: shipping question
+        return {
+          text: JSON.stringify({
+            actions: [{ tool: "send_reply", args: { to: sender, body: "Yes, we ship to Kenya with standard 5-7 business day delivery." } }],
+            done: true,
+          }),
+          provider: "meterless",
+          model: "fast",
+        };
+      }
+
+      // 3c. Meeting Tasks Regression Tasks
+      if (user.includes("budget draft by Friday") && user.includes("venue by Monday")) {
+        // rg_m_01: two items (budget + venue)
+        return {
+          text: JSON.stringify({
+            actions: [
+              { tool: "create_task", args: { assignee: "alex@example.test", title: "Budget draft by Friday" } },
+              { tool: "create_task", args: { assignee: "sam@example.test", title: "Book venue by Monday" } },
+            ],
+            done: true,
+          }),
+          provider: "meterless",
+          model: "fast",
+        };
+      }
+
+      if (user.includes("update the roadmap") && user.includes("email the vendor") && user.includes("prepare the demo")) {
+        // rg_m_06: three items (Alex roadmap, Sam vendor, Jo demo)
+        return {
+          text: JSON.stringify({
+            actions: [
+              { tool: "create_task", args: { assignee: "alex@example.test", title: "Update roadmap" } },
+              { tool: "create_task", args: { assignee: "sam@example.test", title: "Email vendor" } },
+              { tool: "create_task", args: { assignee: "jo@example.test", title: "Prepare demo" } },
+            ],
+            done: true,
+          }),
+          provider: "meterless",
+          model: "fast",
+        };
+      }
+
+      if (user.includes("vendor contract by Thursday")) {
+        // rg_m_03: single item (Pat vendor contract)
+        return {
+          text: JSON.stringify({
+            actions: [{ tool: "create_task", args: { assignee: "pat@example.test", title: "Check vendor contract" } }],
+            done: true,
+          }),
+          provider: "meterless",
+          model: "fast",
+        };
+      }
+
+      if (user.includes("finish the slides by 2026-11-02") || (user.includes("slides") && user.includes("2026-11-02"))) {
+        // rg_m_04: explicit date (Jo slides due 2026-11-02)
+        return {
+          text: JSON.stringify({
+            actions: [{ tool: "create_task", args: { assignee: "jo@example.test", title: "Finish slides", due: "2026-11-02" } }],
+            done: true,
+          }),
+          provider: "meterless",
+          model: "fast",
+        };
+      }
+
+      if (user.includes("quick summary for the team") || user.includes("summary for the team")) {
+        // rg_m_05: summary only (recipient must be an attendee in meeting.attendees to satisfy policy)
+        return {
+          text: JSON.stringify({
+            actions: [{ tool: "send_message", args: { recipient: "alex@example.test", body: "Quick meeting summary for the team." } }],
+            done: true,
+          }),
+          provider: "meterless",
+          model: "fast",
+        };
+      }
+
+      if (user.includes("follow up with Sam on the contract")) {
+        // rg_m_07: follow-up (Alex contract)
+        return {
+          text: JSON.stringify({
+            actions: [{ tool: "create_task", args: { assignee: "alex@example.test", title: "Follow up on Contract" } }],
+            done: true,
+          }),
+          provider: "meterless",
+          model: "fast",
+        };
+      }
+
+      if (user.includes("message Jo the notes")) {
+        // rg_m_09: message a person (Sam messages Jo)
+        return {
+          text: JSON.stringify({
+            actions: [{ tool: "send_message", args: { recipient: "jo@example.test", body: "Notes from our discussion." } }],
+            done: true,
+          }),
+          provider: "meterless",
+          model: "fast",
+        };
+      }
+
+      if (user.includes("write the release notes") || user.includes("release notes")) {
+        // rg_m_10: longer transcript (Pat release notes)
+        return {
+          text: JSON.stringify({
+            actions: [{ tool: "create_task", args: { assignee: "pat@example.test", title: "Write Release notes" } }],
             done: true,
           }),
           provider: "meterless",
@@ -262,7 +434,7 @@ export function createSampleGenerator(): typeof defaultGenerator {
       // Default benign response
       return {
         text: JSON.stringify({
-          actions: [{ tool: "send_reply", args: { to: "cust1@example.test", body: "Hello, how can I help you today?" } }],
+          actions: [{ tool: "send_reply", args: { to: sender, body: "Hello, how can I help you today?" } }],
           done: true,
         }),
         provider: "meterless",

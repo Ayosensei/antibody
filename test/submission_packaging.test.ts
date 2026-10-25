@@ -29,7 +29,7 @@ describe("Task T-D11: Evidence and Submission Packaging", () => {
     expect(calData.summaries.meeting_tasks.percent_hitting_at_least_once).toBeGreaterThanOrEqual(50);
 
     // 4. Cold-Warm comparison
-    const compPath = path.join(evidenceDir, "comparison_20261024T184732Z.json");
+    const compPath = path.join(evidenceDir, "comparison_20261025T180424Z.json");
     expect(fs.existsSync(compPath)).toBe(true);
     const compData = JSON.parse(fs.readFileSync(compPath, "utf-8"));
     const compValidation = ColdWarmComparisonSchema.safeParse(compData);

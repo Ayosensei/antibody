@@ -56,6 +56,7 @@ import { runSql } from "../adapters/zetaris.js";
 import { SUPPORT_TRIAGE_BASELINE_CONFIG } from "../targets/support-triage/index.js";
 import { MEETING_TASKS_BASELINE_CONFIG } from "../targets/meeting-tasks/index.js";
 import { generator as defaultGenerator } from "../adapters/llm/index.js";
+import { loadConfig } from "../config.js";
 import { createInitialRunState, type RunState } from "./state.js";
 
 const SEVERITY_ORDER: Record<string, number> = {
@@ -893,6 +894,7 @@ export async function executeRunGraph(
       };
     });
 
+  const cfg = loadConfig();
   const report = ReportSchema.parse({
     trace_id: traceId,
     target_id: state.target_id,
@@ -901,8 +903,8 @@ export async function executeRunGraph(
     request: validRequest,
     custom_attack_results: customAttackResults,
     modes: {
-      sample_mode: true,
-      llm_provider: "meterless",
+      sample_mode: cfg.sample_mode,
+      llm_provider: cfg.llm_provider,
       memory_mode: validRequest.memory_mode,
     },
     metrics: {
