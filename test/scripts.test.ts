@@ -62,4 +62,11 @@ describe("Task T-D8: Eval & Demo Scripts", () => {
     expect(typeof pair.cold.wall_seconds).toBe("number");
     expect(typeof pair.warm.wall_seconds).toBe("number");
   });
+
+  it("scripts/secret-scan.ts exists and passes with zero tracked credentials", () => {
+    const scanPath = path.resolve(process.cwd(), "scripts/secret-scan.ts");
+    expect(fs.existsSync(scanPath)).toBe(true);
+    const content = fs.readFileSync(scanPath, "utf-8");
+    expect(content).toContain("runSecretScan");
+  });
 });

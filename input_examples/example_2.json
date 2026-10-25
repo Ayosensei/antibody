@@ -1,0 +1,8 @@
+{
+  "target": "meeting_tasks",
+  "attack_budget": 6,
+  "trials": 1,
+  "seed": 43,
+  "memory_mode": "cold",
+  "wait": true
+}

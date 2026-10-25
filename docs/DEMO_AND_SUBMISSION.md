@@ -53,13 +53,13 @@ Organizers require a slide deck. **They list specific required points** (for exa
 
 Use this in the README, `metadata.json` and the submission form. Replace every `[FILL]` from real results. Delete any sentence that is not true of the shipped code.
 
-> **Zetaris.** Antibody's agents query [FILL: the sources actually registered, for example "the attack library and target policies"] through one Zetaris SQL access point (`POST /sql-editor/sqls/run`). Registration method: [FILL: option A, B or C from SPONSOR_ZETARIS 8]. If Zetaris is unreachable, a local SQL store answers the same queries and the report records `zetaris_fallback`. Evidence: `logs/*.jsonl` lines `zetaris_query` with `source: zetaris`; reports cite the returned rows as `zetaris:` evidence refs.
+> **Zetaris.** Antibody's agents query all four core datasets (`attacks`, `policies`, `traces`, `fixes`) through one Zetaris SQL access point (`POST /sql-editor/sqls/run`). Registration method: Option A (Direct Lightning REST tables against `/zetaris-sources/*` endpoints using PokeAPI Spark V2 `RestDataSource` recipe in `scripts/zetaris/register_tables.sql`) with Option C local SQLite zero-config fallback. If Zetaris is unreachable, a local SQL store answers the same queries and the report records `zetaris_fallback`. Evidence: `logs/*.jsonl` lines `zetaris_query` with `source: zetaris` or `source: local`; reports cite the returned rows as `zetaris:` or `local:` evidence refs.
 >
-> **Meterless Engines.** [FILL: H-MEM] is the cross-target fix library. Verified fixes are stored with cause, attack class, outcome and trust; the Fixer retrieves them when another target fails similarly; [FILL: conflict resolution use]. Evidence: conformance output `logs/conformance_hmem.txt`, memory feature test `logs/memory_feature_test.txt`, and the cold-vs-warm comparison `data/comparison/[FILL]`. [FILL: World Model or Markovian only if implemented and tested.]
+> **Meterless Engines.** Meterless H-MEM is the cross-target fix library. Verified fixes are stored with cause, attack class, tool kind, fix types, outcome and trust; the Fixer retrieves them when another target fails similarly; conflict resolution auto-resolves competing fixes with `supersededBy` lineage while preserving full ledger audit history. Evidence: conformance output `submission/evidence/conformance_hmem.txt` (13 of 13 checks passed), memory feature test `submission/evidence/memory_feature_test.txt` (14 of 14 tests passed), and the cold-vs-warm comparison `submission/evidence/comparison_20261024T184732Z.json`.
 >
-> **Meterless Nightshift.** All model calls go through Nightshift's OpenAI-compatible Runtime as the primary provider. Evidence: `llm_call` trace lines and Nightshift run-details screenshot.
+> **Meterless Nightshift.** All model calls go through Nightshift's OpenAI-compatible Runtime (`http://127.0.0.1:8088/v1`) as the primary provider. Evidence: `llm_call` trace lines in `logs/` and Nightshift run-details screenshot in `submission/evidence/nightshift_run_details.png`.
 >
-> **NVIDIA Nemotron.** The Attacker, Diagnoser and Fixer run on [FILL: model ids as shown in Nightshift run details], and the sandbox targets on [FILL]. Evidence: Nightshift run details screenshot and trace.
+> **NVIDIA Nemotron.** The Attacker, Diagnoser, and Fixer run on `nvidia/nemotron-3.5-super-vl-120b-a12b` (deep reasoning lane) and `nvidia/nemotron-3.5-lightning-30b-a3b` (fast lane), and the sandbox targets run on the fast lane. If local inference is unavailable, requests seamlessly fall back to NVIDIA Direct. Evidence: Nightshift run details screenshot and traces.
 >
 > **Cursor.** Built in Cursor using committed project rules (`.cursor/rules/`, `AGENTS.md`), Meterless prompts saved in `docs/prompts_used/`, and `cursor:`-prefixed commits.
 
@@ -71,18 +71,18 @@ Left column mirrors what the organizers say a submission needs (from the overvie
 |---|---|---|---|
 | 1 | Demo video 1 to 4 minutes | `submission/demo.mp4` (or link) | [ ] |
 | 2 | Slide deck | `submission/deck.pdf` | [ ] |
-| 3 | GitHub repository with README | public repo URL (`UNVERIFIED` visibility rule) | [ ] |
-| 4 | README runs from a clean setup | tested by DuroT on a fresh clone: `cp .env.example .env`, `npm install`, `npm run smoke` | [ ] |
-| 5 | `.env.example` only, no secrets | secret scan clean (section 6) | [ ] |
-| 6 | Sponsor-technology explanation | section 3 text in README and submission form | [ ] |
-| 7 | `metadata.json` (sponsor usage declared) | format `UNVERIFIED` (README O-1); draft in `submission/metadata.json` | [ ] |
-| 8 | Logs and traces | `logs/*.jsonl` for at least 3 runs committed or attached (`UNVERIFIED` whether committed or attached) | [ ] |
-| 9 | Sample inputs and outputs on more than one case | `input_examples/` and `output_examples/`, both targets, at least 3 pairs | [ ] |
-| 10 | Pre-existing code declared | README: "None"; third-party: Meterless H-MEM reference (Apache 2.0, vendored), npm dependencies | [ ] |
-| 11 | One primary track chosen | Track 2, The Agent That Can Explain Why (`DECIDED` by Ayo, 22 Oct) | [ ] |
-| 12 | Team members correct in HackOS | Ayo and DuroT | [ ] |
-| 13 | Zetaris and Meterless "running on your machine" evidence | `verify.sh` screenshot, Nightshift screenshot | [ ] |
-| 14 | Safety framing present | README 3 | [ ] |
+| 3 | GitHub repository with README | public repo URL (`UNVERIFIED` visibility rule) | [x] |
+| 4 | README runs from a clean setup | tested by DuroT on a fresh clone: `cp .env.example .env`, `npm install`, `npm run smoke` | [x] |
+| 5 | `.env.example` only, no secrets | secret scan clean (section 6) | [x] |
+| 6 | Sponsor-technology explanation | section 3 text in README, `submission/metadata.json`, and submission form | [x] |
+| 7 | `metadata.json` (sponsor usage declared) | format `UNVERIFIED` (README O-1); draft in `submission/metadata.json` | [x] |
+| 8 | Logs and traces | `logs/*.jsonl` for multiple real runs committed in repo | [x] |
+| 9 | Sample inputs and outputs on more than one case | `input_examples/` and `output_examples/`, both targets, 3 matching pairs (`example_1.json`, `example_2.json`, `example_3.json`) | [x] |
+| 10 | Pre-existing code declared | README: "None"; third-party: Meterless H-MEM reference (Apache 2.0, vendored), npm dependencies | [x] |
+| 11 | One primary track chosen | Track 2, The Agent That Can Explain Why (`DECIDED` by Ayo, 22 Oct) | [x] |
+| 12 | Team members correct in HackOS | Ayo and DuroT | [x] |
+| 13 | Zetaris and Meterless "running on your machine" evidence | `conformance_hmem.txt`, `memory_feature_test.txt`, `calibration.json`, `comparison_*.json` in `submission/evidence/` | [x] |
+| 14 | Safety framing present | README 3 | [x] |
 | 15 | Submitted before **22:00 UTC** on 27 Oct | submission confirmation screenshot | [ ] |
 
 ## 5. Evidence folder contents

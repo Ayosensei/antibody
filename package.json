@@ -12,6 +12,7 @@
     "start": "next start -p 3100",
     "server": "tsx src/server.ts",
     "check:env": "tsx scripts/check-env.ts",
+    "check:secrets": "tsx scripts/secret-scan.ts",
     "test": "vitest run",
     "lint": "eslint .",
     "smoke": "tsx scripts/smoke.ts",

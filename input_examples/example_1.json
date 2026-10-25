@@ -1,0 +1,9 @@
+{
+  "target": "support_triage",
+  "attack_budget": 2,
+  "trials": 1,
+  "seed": 42,
+  "memory_mode": "off",
+  "custom_attacks": [],
+  "wait": true
+}

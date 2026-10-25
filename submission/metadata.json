@@ -1,0 +1,73 @@
+{
+  "project_name": "Antibody",
+  "tagline": "Attacked, learned, immune. Adaptive security hardening for autonomous agent workflows.",
+  "track": "Track 2: The Agent That Can Explain Why",
+  "team": {
+    "name": "Antibody Team",
+    "members": [
+      {
+        "name": "Ayo (Sensei)",
+        "role": "Tech Lead, Orchestration, Targets, UI"
+      },
+      {
+        "name": "DuroT",
+        "role": "Sponsor Integrations, Evaluation, Memory, Packaging"
+      }
+    ]
+  },
+  "repository": {
+    "url": "https://github.com/Ayosensei/antibody",
+    "visibility": "public",
+    "license": "Apache-2.0"
+  },
+  "sponsor_technologies": {
+    "zetaris": {
+      "usage": "Data fabric and Lightning SQL query engine",
+      "registered_sources": [
+        "attacks",
+        "policies",
+        "traces",
+        "fixes"
+      ],
+      "registration_method": "Option A (Lightning REST Tables against /zetaris-sources/* endpoints via PokeAPI RestDataSource recipe) with Option C local SQLite zero-config fallback",
+      "rest_endpoint": "POST /sql-editor/sqls/run",
+      "evidence": "Traces in logs/ contain 'zetaris_query' with source 'zetaris' or 'local'; reports cite 'zetaris:' or 'local:' row refs."
+    },
+    "meterless_engines": {
+      "usage": "H-MEM hierarchical memory engine for persistent cross-target fix learning",
+      "engine": "H-MEM",
+      "features_used": [
+        "confidence scoring",
+        "feedback deltas",
+        "conflict gate with auto-resolve",
+        "cross-target memory retrieval"
+      ],
+      "evidence": "13/13 passing tests in submission/evidence/conformance_hmem.txt, 14/14 passing tests in submission/evidence/memory_feature_test.txt, and cold vs. warm comparison in submission/evidence/comparison_20261024T184732Z.json."
+    },
+    "meterless_nightshift": {
+      "usage": "Local inference runtime and primary OpenAI-compatible model provider",
+      "runtime_url": "http://127.0.0.1:8088/v1",
+      "evidence": "Traces in logs/ contain 'llm_call' lines routed through Nightshift runtime; screenshots in submission/evidence/nightshift_lanes.png and nightshift_run_details.png."
+    },
+    "nvidia_nemotron": {
+      "usage": "Reasoning and fast model execution",
+      "models": {
+        "reasoning": "nvidia/nemotron-3.5-super-vl-120b-a12b",
+        "fast": "nvidia/nemotron-3.5-lightning-30b-a3b"
+      },
+      "evidence": "Nightshift run details and NVIDIA direct fallback adapter (src/adapters/llm/nvidia.ts) verified in test/llm_adapters.test.ts."
+    },
+    "cursor": {
+      "usage": "AI-assisted development environment",
+      "configuration": ".cursor/rules/ and AGENTS.md project rules; official Meterless contract prompts in docs/prompts_used/",
+      "evidence": "Git commit history and submission/evidence/cursor_agent_meterless_prompt.png."
+    }
+  },
+  "submission_evidence": {
+    "demo_video": "submission/demo.mp4",
+    "slide_deck": "submission/deck.pdf",
+    "evidence_folder": "submission/evidence/",
+    "sample_inputs": "input_examples/",
+    "sample_outputs": "output_examples/"
+  }
+}
