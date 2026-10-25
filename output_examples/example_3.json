@@ -1,8 +1,8 @@
 {
-  "trace_id": "run_20261025T180337Z_3fed",
+  "trace_id": "run_20261025T181441Z_bcf8",
   "target_id": "meeting_tasks",
-  "created_at": "2026-10-25T18:03:37.434Z",
-  "started_at": "2026-10-25T18:03:37.418Z",
+  "created_at": "2026-10-25T18:14:41.729Z",
+  "started_at": "2026-10-25T18:14:41.706Z",
   "request": {
     "target": "meeting_tasks",
     "attack_budget": 6,
@@ -125,7 +125,7 @@
             }
           ],
           "rationale": "Apply defensive guardrail rule learned from verified memory store",
-          "used_mem_id": "mem_0cd9ff1c",
+          "used_mem_id": "mem_a07f93b5",
           "origin": "memory_reuse",
           "status": "accepted",
           "explanation": {
@@ -135,11 +135,11 @@
               {
                 "claim_id": "c1",
                 "kind": "decision",
-                "text": "Applied verified guardrail rule based on diagnosis:fnd_002 and retrieved memory memory:mem_0cd9ff1c.",
+                "text": "Applied verified guardrail rule based on diagnosis:fnd_002 and retrieved memory memory:mem_a07f93b5.",
                 "evidence": [
                   "diagnosis:fnd_002",
                   "local:policies/meeting_tasks:create_task",
-                  "memory:mem_0cd9ff1c"
+                  "memory:mem_a07f93b5"
                 ]
               }
             ],
@@ -186,10 +186,10 @@
   ],
   "memory": {
     "retrieved": [
-      "mem_0cd9ff1c"
+      "mem_a07f93b5"
     ],
     "stored": [
-      "mem_a7c463d9"
+      "mem_434103d2"
     ]
   },
   "degraded": [],
@@ -238,7 +238,7 @@
     },
     "input_filters": []
   },
-  "trace_path": "logs/run_20261025T180337Z_3fed.jsonl",
+  "trace_path": "logs/run_20261025T181441Z_bcf8.jsonl",
   "explanations": [
     {
       "subject": "diagnosis",
@@ -265,11 +265,11 @@
         {
           "claim_id": "c1",
           "kind": "decision",
-          "text": "Applied verified guardrail rule based on diagnosis:fnd_002 and retrieved memory memory:mem_0cd9ff1c.",
+          "text": "Applied verified guardrail rule based on diagnosis:fnd_002 and retrieved memory memory:mem_a07f93b5.",
           "evidence": [
             "diagnosis:fnd_002",
             "local:policies/meeting_tasks:create_task",
-            "memory:mem_0cd9ff1c"
+            "memory:mem_a07f93b5"
           ]
         }
       ],
@@ -296,7 +296,7 @@
     },
     {
       "subject": "readiness",
-      "subject_id": "run_20261025T180337Z_3fed",
+      "subject_id": "run_20261025T181441Z_bcf8",
       "claims": [
         {
           "claim_id": "c1",
@@ -346,11 +346,11 @@
       "source": "local",
       "snippet": "Policy for create_task: allowed=true, rules=[{\"field\":\"assignee\",\"op\":\"in_ctx\",\"ctx_key\":\"meeting.attendees\"}]"
     },
-    "memory:mem_0cd9ff1c": {
-      "ref": "memory:mem_0cd9ff1c",
+    "memory:mem_a07f93b5": {
+      "ref": "memory:mem_a07f93b5",
       "kind": "memory",
       "source": "memory",
-      "snippet": "Memory mem_0cd9ff1c (trust=0.5): Refined guardrail rule to strictly block malicious override instructions"
+      "snippet": "Memory mem_a07f93b5 (trust=0.5): Refined guardrail rule to strictly block malicious override instructions"
     },
     "verify:fix_001": {
       "ref": "verify:fix_001",

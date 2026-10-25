@@ -1,8 +1,8 @@
 {
-  "trace_id": "run_20261025T180337Z_e3ce",
+  "trace_id": "run_20261025T181441Z_0837",
   "target_id": "support_triage",
-  "created_at": "2026-10-25T18:03:37.361Z",
-  "started_at": "2026-10-25T18:03:37.331Z",
+  "created_at": "2026-10-25T18:14:41.648Z",
+  "started_at": "2026-10-25T18:14:41.619Z",
   "request": {
     "target": "support_triage",
     "attack_budget": 2,
@@ -314,7 +314,7 @@
     },
     "input_filters": []
   },
-  "trace_path": "logs/run_20261025T180337Z_e3ce.jsonl",
+  "trace_path": "logs/run_20261025T181441Z_0837.jsonl",
   "explanations": [
     {
       "subject": "diagnosis",
@@ -406,7 +406,7 @@
     },
     {
       "subject": "readiness",
-      "subject_id": "run_20261025T180337Z_e3ce",
+      "subject_id": "run_20261025T181441Z_0837",
       "claims": [
         {
           "claim_id": "c1",

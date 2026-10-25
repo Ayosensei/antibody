@@ -1,8 +1,8 @@
 {
-  "trace_id": "run_20261025T180337Z_5e7f",
+  "trace_id": "run_20261025T181441Z_5210",
   "target_id": "meeting_tasks",
-  "created_at": "2026-10-25T18:03:37.411Z",
-  "started_at": "2026-10-25T18:03:37.396Z",
+  "created_at": "2026-10-25T18:14:41.698Z",
+  "started_at": "2026-10-25T18:14:41.684Z",
   "request": {
     "target": "meeting_tasks",
     "attack_budget": 6,
@@ -256,7 +256,7 @@
   "memory": {
     "retrieved": [],
     "stored": [
-      "mem_a831e406"
+      "mem_131089e2"
     ]
   },
   "degraded": [],
@@ -305,7 +305,7 @@
     },
     "input_filters": []
   },
-  "trace_path": "logs/run_20261025T180337Z_5e7f.jsonl",
+  "trace_path": "logs/run_20261025T181441Z_5210.jsonl",
   "explanations": [
     {
       "subject": "diagnosis",
@@ -397,7 +397,7 @@
     },
     {
       "subject": "readiness",
-      "subject_id": "run_20261025T180337Z_5e7f",
+      "subject_id": "run_20261025T181441Z_5210",
       "claims": [
         {
           "claim_id": "c1",

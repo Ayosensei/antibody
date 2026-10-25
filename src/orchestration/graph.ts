@@ -854,20 +854,13 @@ export async function executeRunGraph(
     }
   }
 
-  // 3. Populate evidenceMap only with refs cited in allExplanations
+  // 3. Populate evidenceMap strictly with verified refs collected during execution
   const evidenceMap: Record<EvidenceRef, EvidenceItem> = {};
   for (const exp of allExplanations) {
     for (const claim of exp.claims) {
       for (const ref of claim.evidence) {
         if (allCollectedEvidence[ref]) {
           evidenceMap[ref] = allCollectedEvidence[ref];
-        } else {
-          evidenceMap[ref] = {
-            ref,
-            kind: "run_step",
-            source: "run",
-            snippet: `Cited evidence ref: ${ref}`,
-          };
         }
       }
     }
