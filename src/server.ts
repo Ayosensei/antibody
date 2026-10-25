@@ -613,6 +613,11 @@ export function createApiServer(options: ServerOptions = {}): http.Server {
     sendError(res, 404, "not_found", `Route '${req.method} ${pathname}' not found`);
   });
 
+  server.timeout = 0;
+  server.requestTimeout = 0;
+  server.headersTimeout = 0;
+  server.keepAliveTimeout = 0;
+
   return server;
 }
 

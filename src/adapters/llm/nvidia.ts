@@ -46,7 +46,7 @@ export async function callNvidiaChat(
       model,
       messages,
       temperature: options?.temperature ?? 0.2,
-      ...(options?.maxTokens ? { max_tokens: options.maxTokens } : {}),
+      max_tokens: options?.maxTokens || 1024,
     };
 
     const response = await fetch(url, {
@@ -67,7 +67,10 @@ export async function callNvidiaChat(
 
     const data = await response.json();
     const choice = data.choices?.[0];
-    const text = choice?.message?.content;
+    let text = choice?.message?.content;
+    if (typeof text !== "string" && typeof choice?.message?.reasoning_content === "string") {
+      text = choice.message.reasoning_content;
+    }
 
     if (typeof text !== "string") {
       throw new Error("NVIDIA API returned malformed response: missing choices[0].message.content");

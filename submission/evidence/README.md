@@ -15,7 +15,8 @@ The following files are committed directly in this directory and validated by au
 | `conformance_hmem.txt` | Test Output | Official H-MEM conformance test suite results (13 of 13 tests passed: record validation, feedback deltas, ranking order, sleep guardrails, conflict gate, ledger audit, dream boundary). | `npm run conformance:hmem` |
 | `memory_feature_test.txt` | Test Output | H-MEM integration test suite results (14 of 14 tests passed: cross-target storage, retrieval, trust updates, conflict resolution, cold vs. warm mode). | `npm run test:memory` |
 | `calibration.json` | JSON Metric | Empirical hit-rate calibration run over 14 attack seeds across 3 baseline trials. Verified $\ge 50\%$ hit rate for both `support_triage` and `meeting_tasks`. | `npm run eval:calibrate` |
-| `comparison_20261025T180424Z.json` | JSON Metric | Cold vs. warm memory multi-run comparison output conforming to `ColdWarmComparisonSchema`. Documents baseline cold vs. warm fix proposal attempts, acceptance rates, and memory retrieval impacts. | `npm run demo:cold-warm` |
+| `comparison_20261025T180424Z.json` | JSON Metric | Cold vs. warm memory multi-run comparison output conforming to `ColdWarmComparisonSchema` in sample mode. Documents deterministic baseline cold vs. warm fix proposal attempts, acceptance rates, and memory retrieval impacts. | `npm run demo:cold-warm` (SAMPLE_MODE=true) |
+| `comparison_live_20261025T194011Z.json` | JSON Metric | Authentic live cold vs. warm comparison run using real NVIDIA Nemotron cloud inference (`nvidia/nemotron-3.5-lightning-30b-a3b` and `nvidia/nemotron-3.5-super-vl-120b-a12b`). Documents genuine cloud inference wall-clock timings (699s cold, 750.2s warm) and live trace execution (`run_20261025T191602Z_7493`, `run_20261025T192741Z_daef`). | `npm run demo:cold-warm` (SAMPLE_MODE=false) |
 
 ---
 

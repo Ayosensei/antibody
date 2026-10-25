@@ -61,6 +61,8 @@ async function runColdWarmComparison() {
   const numPairs = parseInt(process.env.PAIRS || "1", 10);
   const clampedPairs = Math.min(Math.max(numPairs, 1), 3);
 
+  const budget = parseInt(process.env.ATTACK_BUDGET || "2", 10);
+
   const client = await createApiClient();
   console.log(`Connected to Antibody API at: ${client.baseUrl} (isEphemeral: ${client.isEphemeral})\n`);
 
@@ -71,13 +73,13 @@ async function runColdWarmComparison() {
     console.log(`  => Memory reset: ${resetRes.message}\n`);
 
     // 2. Run target A (support_triage, warm) to seed memory
-    console.log(`[Step 2] Training memory: Running source target ${sourceTarget} (memory_mode: warm, seed: ${seed})...`);
+    console.log(`[Step 2] Training memory: Running source target ${sourceTarget} (memory_mode: warm, seed: ${seed}, budget: ${budget})...`);
     const seedReport = await client.run({
       target: sourceTarget,
       memory_mode: "warm",
       seed,
       trials: 1,
-      attack_budget: 6,
+      attack_budget: budget,
       wait: true,
     });
     console.log(`  => Source run completed: trace_id=${seedReport.trace_id}, fixes_accepted=${seedReport.metrics.fixes_accepted}`);
@@ -91,13 +93,13 @@ async function runColdWarmComparison() {
       console.log(`[Step 3.${i}] Running Pair ${i}/${clampedPairs} on target ${target} (seed: ${pairSeed}):`);
 
       // Run B cold
-      console.log(`  -> Running ${target} in COLD mode...`);
+      console.log(`  -> Running ${target} in COLD mode (budget: ${budget})...`);
       const coldReport = await client.run({
         target,
         memory_mode: "cold",
         seed: pairSeed,
         trials: 1,
-        attack_budget: 6,
+        attack_budget: budget,
         wait: true,
       });
       const coldMetrics = extractPairMetrics(coldReport);
@@ -106,13 +108,13 @@ async function runColdWarmComparison() {
       );
 
       // Run B warm
-      console.log(`  -> Running ${target} in WARM mode...`);
+      console.log(`  -> Running ${target} in WARM mode (budget: ${budget})...`);
       const warmReport = await client.run({
         target,
         memory_mode: "warm",
         seed: pairSeed,
         trials: 1,
-        attack_budget: 6,
+        attack_budget: budget,
         wait: true,
       });
       const warmMetrics = extractPairMetrics(warmReport);

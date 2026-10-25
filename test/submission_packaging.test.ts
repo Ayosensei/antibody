@@ -35,6 +35,12 @@ describe("Task T-D11: Evidence and Submission Packaging", () => {
     const compValidation = ColdWarmComparisonSchema.safeParse(compData);
     expect(compValidation.success).toBe(true);
 
+    const compLivePath = path.join(evidenceDir, "comparison_live_20261025T194011Z.json");
+    if (fs.existsSync(compLivePath)) {
+      const compLiveData = JSON.parse(fs.readFileSync(compLivePath, "utf-8"));
+      expect(ColdWarmComparisonSchema.safeParse(compLiveData).success).toBe(true);
+    }
+
     // 5. Evidence README
     const readmePath = path.join(evidenceDir, "README.md");
     expect(fs.existsSync(readmePath)).toBe(true);

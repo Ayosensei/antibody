@@ -579,6 +579,48 @@ export function createSampleGenerator(): typeof defaultGenerator {
   };
 }
 
+function postJson(urlStr: string, bodyObj: unknown, headersExtra: Record<string, string> = {}): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const u = new URL(urlStr);
+    const postData = JSON.stringify(bodyObj || {});
+    const req = http.request(
+      {
+        hostname: u.hostname,
+        port: u.port,
+        path: u.pathname + u.search,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(postData),
+          ...headersExtra,
+        },
+        timeout: 0,
+      },
+      (res) => {
+        let body = "";
+        res.setEncoding("utf-8");
+        res.on("data", (chunk) => {
+          body += chunk;
+        });
+        res.on("end", () => {
+          if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+            try {
+              resolve(JSON.parse(body));
+            } catch (err) {
+              reject(err);
+            }
+          } else {
+            reject(new Error(`API returned HTTP ${res.statusCode}: ${body}`));
+          }
+        });
+      }
+    );
+    req.on("error", reject);
+    req.write(postData);
+    req.end();
+  });
+}
+
 export async function createApiClient(serverOptions: ServerOptions = {}): Promise<ApiClientSession> {
   const envUrl = process.env.API_BASE_URL || process.env.API_URL || "http://127.0.0.1:8000";
 
@@ -594,28 +636,11 @@ export async function createApiClient(serverOptions: ServerOptions = {}): Promis
         isEphemeral: false,
         close: async () => {},
         run: async (req: RunRequest) => {
-          const res = await fetch(`${envUrl}/run`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(req),
-          });
-          if (!res.ok) {
-            const errBody = await res.text();
-            throw new Error(`API /run returned HTTP ${res.status}: ${errBody}`);
-          }
-          const data = await res.json();
+          const data = await postJson(`${envUrl}/run`, req);
           return ReportSchema.parse(data);
         },
         resetMemory: async () => {
-          const res = await fetch(`${envUrl}/memory/reset`, {
-            method: "POST",
-            headers: { "X-Confirm": "reset" },
-          });
-          if (!res.ok) {
-            const errBody = await res.text();
-            throw new Error(`API /memory/reset returned HTTP ${res.status}: ${errBody}`);
-          }
-          return res.json();
+          return postJson(`${envUrl}/memory/reset`, {}, { "X-Confirm": "reset" });
         },
         getHealth: async () => {
           const res = await fetch(`${envUrl}/health`);
@@ -656,28 +681,11 @@ export async function createApiClient(serverOptions: ServerOptions = {}): Promis
       });
     },
     run: async (req: RunRequest) => {
-      const res = await fetch(`${ephemeralUrl}/run`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(req),
-      });
-      if (!res.ok) {
-        const errBody = await res.text();
-        throw new Error(`API /run returned HTTP ${res.status}: ${errBody}`);
-      }
-      const data = await res.json();
+      const data = await postJson(`${ephemeralUrl}/run`, req);
       return ReportSchema.parse(data);
     },
     resetMemory: async () => {
-      const res = await fetch(`${ephemeralUrl}/memory/reset`, {
-        method: "POST",
-        headers: { "X-Confirm": "reset" },
-      });
-      if (!res.ok) {
-        const errBody = await res.text();
-        throw new Error(`API /memory/reset returned HTTP ${res.status}: ${errBody}`);
-      }
-      return res.json();
+      return postJson(`${ephemeralUrl}/memory/reset`, {}, { "X-Confirm": "reset" });
     },
     getHealth: async () => {
       const res = await fetch(`${ephemeralUrl}/health`);
