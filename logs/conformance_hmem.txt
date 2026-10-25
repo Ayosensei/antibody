@@ -1,5 +1,5 @@
 
-H-MEM conformance: implementation = C:\Users\USER\Documents\CODE\HACKATHONS\GEN AI 2\antibody\src\adapters\engines\hmem-ref\index.ts
+H-MEM conformance: implementation = c:\Users\USER\Documents\CODE\HACKATHONS\GEN AI 2\antibody\src\adapters\engines\hmem-ref\index.ts
 
   record-validation
     PASS rv-001 a record with no source is rejected by construction
