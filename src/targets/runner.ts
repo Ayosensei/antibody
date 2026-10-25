@@ -39,27 +39,80 @@ interface ActionPayload {
   done: boolean;
 }
 
-function parseModelJson(rawText: string): ActionPayload | null {
-  try {
-    // Attempt direct parse
-    const parsed = JSON.parse(rawText);
-    if (Array.isArray(parsed.actions) && typeof parsed.done === "boolean") {
-      return parsed as ActionPayload;
-    }
-  } catch {
-    // If wrapped in markdown ```json ... ``` code fence, extract it
-    const jsonMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-    if (jsonMatch) {
+function sanitizeActionPayload(parsed: any): ActionPayload | null {
+  if (!parsed || typeof parsed !== "object") return null;
+  const done = typeof parsed.done === "boolean" ? parsed.done : false;
+  if (!Array.isArray(parsed.actions)) return null;
+
+  const validActions: { tool: string; args: Record<string, unknown> }[] = [];
+  for (const item of parsed.actions) {
+    if (!item || typeof item !== "object") continue;
+    const toolName =
+      typeof item.tool === "string" && item.tool.trim().length > 0
+        ? item.tool.trim()
+        : typeof item.name === "string" && item.name.trim().length > 0
+        ? item.name.trim()
+        : null;
+    if (!toolName) continue;
+
+    let toolArgs = item.args ?? item.arguments ?? item.parameters ?? {};
+    if (typeof toolArgs === "string") {
       try {
-        const parsedFence = JSON.parse(jsonMatch[1]);
-        if (Array.isArray(parsedFence.actions) && typeof parsedFence.done === "boolean") {
-          return parsedFence as ActionPayload;
-        }
+        toolArgs = JSON.parse(toolArgs);
       } catch {
-        // Fall through
+        toolArgs = {};
       }
     }
+    if (typeof toolArgs !== "object" || toolArgs === null || Array.isArray(toolArgs)) {
+      toolArgs = {};
+    }
+
+    validActions.push({ tool: toolName, args: toolArgs as Record<string, unknown> });
   }
+
+  // If actions array was non-empty but zero valid actions were found and not done, reject to prompt retry
+  if (parsed.actions.length > 0 && validActions.length === 0 && !done) {
+    return null;
+  }
+
+  return { actions: validActions, done };
+}
+
+function parseModelJson(rawText: string): ActionPayload | null {
+  // 1. Direct parse attempt
+  try {
+    const direct = JSON.parse(rawText);
+    const sanitized = sanitizeActionPayload(direct);
+    if (sanitized) return sanitized;
+  } catch {
+    // Continue
+  }
+
+  // 2. Markdown code fence extraction
+  const jsonMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+  if (jsonMatch) {
+    try {
+      const fenced = JSON.parse(jsonMatch[1]);
+      const sanitized = sanitizeActionPayload(fenced);
+      if (sanitized) return sanitized;
+    } catch {
+      // Continue
+    }
+  }
+
+  // 3. Substring scan between first '{' and last '}'
+  const firstBrace = rawText.indexOf("{");
+  const lastBrace = rawText.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    try {
+      const extracted = JSON.parse(rawText.substring(firstBrace, lastBrace + 1));
+      const sanitized = sanitizeActionPayload(extracted);
+      if (sanitized) return sanitized;
+    } catch {
+      // Continue
+    }
+  }
+
   return null;
 }
 
@@ -208,27 +261,34 @@ export async function executeTarget(params: ExecuteTargetParams): Promise<Target
     const observationParts: string[] = [];
 
     for (const action of actionPayload.actions) {
-      const toolStatus = evaluateToolCall(action.tool, action.args, params.config, params.targetId);
+      if (!action || typeof action.tool !== "string" || !action.tool.trim()) continue;
+      const toolName = action.tool.trim();
+      const toolArgs =
+        action.args && typeof action.args === "object" && !Array.isArray(action.args)
+          ? action.args
+          : {};
+
+      const toolStatus = evaluateToolCall(toolName, toolArgs, params.config, params.targetId);
 
       toolCalls.push({
         step: steps,
-        tool: action.tool,
-        args: action.args,
+        tool: toolName,
+        args: toolArgs,
         status: toolStatus,
       });
 
       if (toolStatus === "executed") {
         const sim =
           params.targetId === "support_triage"
-            ? simulateSupportTool(action.tool, action.args)
-            : simulateMeetingTool(action.tool, action.args);
+            ? simulateSupportTool(toolName, toolArgs)
+            : simulateMeetingTool(toolName, toolArgs);
 
         if (sim.outputText) {
           finalOutputParts.push(sim.outputText);
         }
-        observationParts.push(`Tool ${action.tool} result: ${JSON.stringify(sim.result)}`);
+        observationParts.push(`Tool ${toolName} result: ${JSON.stringify(sim.result)}`);
       } else {
-        observationParts.push(`Tool ${action.tool} result: status=${toolStatus}`);
+        observationParts.push(`Tool ${toolName} result: status=${toolStatus}`);
       }
     }
 

@@ -434,4 +434,41 @@ describe("Sandbox Targets - Regression Tasks Execution", () => {
     expect(run.tool_calls[1].tool).toBe("create_task");
     expect(run.tool_calls.every((c) => c.status === "executed")).toBe(true);
   });
+
+  it("handles and sanitizes malformed LLM actions without failing TargetRunSchema validation", async () => {
+    const fakeGenerator = async (): Promise<GeneratorResult> => {
+      return {
+        text: `Here is what I will do:\n\`\`\`json
+{
+  "actions": [
+    { "tool": "tag_ticket", "args": { "tag": "billing" } },
+    { "not_a_tool": "invalid" },
+    null,
+    { "name": "respond_to_customer", "parameters": { "message": "Help is on the way" } },
+    { "tool": "tag_ticket", "args": "{\\"tag\\": \\"urgent\\"}" }
+  ],
+  "done": true
+}
+\`\`\`\nHope this helps!`,
+        provider: "nvidia",
+        model: "nemotron",
+      };
+    };
+
+    const run = await executeTarget({
+      targetId: "support_triage",
+      config: SUPPORT_TRIAGE_BASELINE_CONFIG,
+      policy: supportPolicy,
+      inputText: "Billing issue with invoice",
+      trial: 1,
+      generatorFn: fakeGenerator,
+    });
+
+    // Malformed actions (not_a_tool, null) are filtered; name->tool and stringified args are parsed
+    expect(run.tool_calls).toHaveLength(3);
+    expect(run.tool_calls[0].tool).toBe("tag_ticket");
+    expect(run.tool_calls[1].tool).toBe("respond_to_customer");
+    expect(run.tool_calls[2].tool).toBe("tag_ticket");
+    expect(run.tool_calls.every((c) => typeof c.tool === "string" && typeof c.args === "object" && c.args !== null)).toBe(true);
+  });
 });
