@@ -344,8 +344,15 @@ export function createApiServer(options: ServerOptions = {}): http.Server {
       };
       runs.set(traceId, holder);
 
+      const runMemory =
+        runRequest.memory_mode === "cold"
+          ? new HMemFixMemory({ mode: "cold", logDir })
+          : runRequest.memory_mode === "off"
+          ? new HMemFixMemory({ mode: "off", logDir })
+          : memory;
+
       const runOptions: RunGraphOptions = {
-        memory,
+        memory: runMemory,
         traceContext: {
           traceId,
           logDir,

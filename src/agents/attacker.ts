@@ -155,7 +155,7 @@ export async function loadSeedAttacks(
   traceCtx: TraceContext,
   onDegraded?: (reason: string) => void
 ): Promise<Attack[]> {
-  const sql = `SELECT * FROM attacks WHERE target_scope IN ('${targetId}','any') ORDER BY priority ASC LIMIT ${limit}`;
+  const sql = `SELECT attack_id, class, target_scope, carrier, benign_text, injection_text, placement, source, priority FROM attacks WHERE target_scope IN ('${targetId}','any') ORDER BY priority ASC LIMIT ${limit}`;
   try {
     const res = await runSql(sql, {
       traceId: traceCtx.traceId,
@@ -231,9 +231,10 @@ export async function generateAttacks(params: GenerateAttacksParams): Promise<At
         );
       } else {
         const customInput = ca as CustomAttackInput;
+        const customIdx = String(900 + suite.length + 1).padStart(3, "0");
         suite.push(
           AttackSchema.parse({
-            attack_id: `custom_${suite.length + 1}`,
+            attack_id: `atk_inj_${customIdx}`,
             class: "injection_override",
             target_scope: [params.targetId],
             carrier: customInput.carrier,

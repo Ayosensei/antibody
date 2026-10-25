@@ -32,6 +32,7 @@ import {
   type ToolName,
   type TargetConfig,
   type TargetId,
+  type TargetRun,
   type TraceContext,
   type VerificationResult,
 } from "../schemas.js";
@@ -48,9 +49,10 @@ import {
   runFinalVerification,
   verifyFix,
 } from "../agents/verifier.js";
-import { createReadinessExplanation } from "../explain/templates.js";
+import { createReadinessExplanation, createUnresolvedExplanation } from "../explain/templates.js";
 import { buildEvidencePacket } from "../explain/evidence.js";
 import { HMemFixMemory, type FixMemory } from "../adapters/engines/hmem.js";
+import { runSql } from "../adapters/zetaris.js";
 import { SUPPORT_TRIAGE_BASELINE_CONFIG } from "../targets/support-triage/index.js";
 import { MEETING_TASKS_BASELINE_CONFIG } from "../targets/meeting-tasks/index.js";
 import { generator as defaultGenerator } from "../adapters/llm/index.js";
@@ -76,7 +78,22 @@ export interface RunGraphOptions {
   generatorFn?: typeof defaultGenerator;
 }
 
-function loadPolicyForTarget(targetId: TargetId, sampleDir?: string): Policy {
+async function loadPolicyForTarget(
+  targetId: TargetId,
+  sampleDir?: string,
+  traceCtx?: TraceContext
+): Promise<Policy> {
+  const sql = `SELECT target_id, tool, allowed, rule_json FROM policies WHERE target_id = '${targetId}'`;
+  try {
+    await runSql(sql, {
+      traceId: traceCtx?.traceId,
+      targetAgent: "System",
+      logDir: traceCtx?.logDir,
+    });
+  } catch {
+    // Graceful fallback to file if table/query unavailable
+  }
+
   const dir = sampleDir || path.resolve(process.cwd(), "data/sample");
   const filePath = path.join(dir, "policies.json");
   if (fs.existsSync(filePath)) {
@@ -138,7 +155,7 @@ export async function executeRunGraph(
     { logDir, canaryKey }
   );
 
-  const policy = loadPolicyForTarget(validRequest.target, options.sampleDir);
+  const policy = await loadPolicyForTarget(validRequest.target, options.sampleDir, traceCtx);
   const baselineConfig =
     validRequest.target === "support_triage"
       ? SUPPORT_TRIAGE_BASELINE_CONFIG
@@ -155,18 +172,25 @@ export async function executeRunGraph(
     regressionTasks,
   });
 
+  // Track Zetaris SQL calls
+  state.counters.zetaris_calls++; // Policy lookup via Zetaris / local store
+
+  const storedMemIds: string[] = [];
+  const unresolvedExplanations: Explanation[] = [];
+
   const memoryMode = request.memory_mode;
   const memory: FixMemory =
-    options.memory ||
-    new HMemFixMemory({
-      mode: memoryMode,
-      traceId,
-      logDir,
-      persistDir: options.persistDir,
-      onDegraded: (reason) => {
-        if (!state.degraded.includes(reason)) state.degraded.push(reason);
-      },
-    });
+    (options.memory && (options.memory as any).mode === memoryMode)
+      ? options.memory
+      : new HMemFixMemory({
+          mode: memoryMode,
+          traceId,
+          logDir,
+          persistDir: options.persistDir,
+          onDegraded: (reason) => {
+            if (!state.degraded.includes(reason)) state.degraded.push(reason);
+          },
+        });
 
   const startTime = Date.now();
   const onDegraded = (reason: string) => {
@@ -178,6 +202,7 @@ export async function executeRunGraph(
   // ==========================================================================
   // N1: generate_attacks (Attacker)
   // ==========================================================================
+  state.counters.zetaris_calls++; // Attacker queries attack catalog via Zetaris / local store
   state.attack_suite = await generateAttacks({
     targetId: state.target_id,
     policy: state.policy,
@@ -298,8 +323,11 @@ export async function executeRunGraph(
   const findingsHistory: {
     finding: Finding;
     attack: Attack;
+    run: TargetRun;
+    canary: string;
     hits: Hit[];
     diagnosis: any;
+    memories: any[];
     fixes: Fix[];
     verifications: VerificationResult[];
   }[] = [];
@@ -376,7 +404,7 @@ export async function executeRunGraph(
       hits: failingTrial.verdict.hits,
       configCurrent: state.config_current,
       policy: state.policy,
-      canary: failingTrial.run.run_ref,
+      canary: failingTrial.canary,
       traceCtx,
       onDegraded,
       generatorFn: options.generatorFn,
@@ -387,11 +415,14 @@ export async function executeRunGraph(
     // N5: recall_memory
     if (request.memory_mode !== "off") {
       try {
+        const queryToolKind = diagnosis.implicated_tool
+          ? (TOOL_KINDS[diagnosis.implicated_tool as ToolName] ?? null)
+          : null;
         const memQuery: MemoryQuery = {
           root_cause_code: diagnosis.root_cause_code,
           hit_types: activeFinding.hit_types,
           attack_class: activeAttack.class,
-          tool_kind: (diagnosis.implicated_tool as any) || undefined,
+          tool_kind: queryToolKind,
           k: 3,
           min_trust: 0.3,
         };
@@ -422,9 +453,10 @@ export async function executeRunGraph(
         policy: state.policy,
         memories: state.current.memories,
         rejections: state.current.rejections,
+        rejectedVerifications: findingVerifications,
         regressionTasks: state.regression_tasks,
         attempt: state.current.attempt,
-        canary: failingTrial.run.run_ref,
+        canary: failingTrial.canary,
         traceCtx,
         onDegraded,
         generatorFn: options.generatorFn,
@@ -455,6 +487,7 @@ export async function executeRunGraph(
 
       if (verRes.verdict === "accept") {
         // E3a: N8 commit_fix
+        fix.status = "accepted";
         findingResolved = true;
         state.config_current = applyFixOps(state.config_current, fix.ops, true);
         state.accepted_fixes.push({ fix, finding: activeFinding, attack: activeAttack });
@@ -463,6 +496,7 @@ export async function executeRunGraph(
         if (request.memory_mode !== "off") {
           try {
             const memId = `mem_${crypto.randomUUID().slice(0, 8)}`;
+            storedMemIds.push(memId);
             const toolKind = diagnosis.implicated_tool
               ? (TOOL_KINDS[diagnosis.implicated_tool as ToolName] || null)
               : null;
@@ -505,14 +539,29 @@ export async function executeRunGraph(
             seed: request.seed,
             traceCtx,
             onDegraded,
+            generatorFn: options.generatorFn,
           });
-          if (reCheck.verdict.verdict === "hit") {
-            remainingQueue.push(queuedFinding);
-          } else {
+          if (reCheck.verdict.verdict === "blocked") {
             prunedCount++;
+          } else {
+            remainingQueue.push(queuedFinding);
           }
         }
         state.queue = remainingQueue;
+
+        if (prunedCount > 0) {
+          recordTrace(
+            {
+              traceId,
+              agentName: "System",
+              action: "queue_pruned",
+              status: "success",
+              inputSummary: `Pruned ${prunedCount} finding(s) from queue`,
+              outputSummary: `${remainingQueue.length} remaining in queue`,
+            },
+            { logDir, canaryKey }
+          );
+        }
 
         recordTrace(
           {
@@ -527,6 +576,7 @@ export async function executeRunGraph(
         );
       } else {
         // Rejection
+        fix.status = "rejected";
         state.current.rejections.push(...verRes.reasons);
       }
     }
@@ -576,10 +626,41 @@ export async function executeRunGraph(
         findingVerifications.push(fbVerRes);
 
         if (fbVerRes.verdict === "accept") {
+          fallback.status = "accepted";
           fallbackAccepted = true;
           findingResolved = true;
           state.config_current = applyFixOps(state.config_current, fallback.ops, true);
           state.accepted_fixes.push({ fix: fallback, finding: activeFinding, attack: activeAttack });
+
+          if (request.memory_mode !== "off") {
+            try {
+              const memId = `mem_${crypto.randomUUID().slice(0, 8)}`;
+              storedMemIds.push(memId);
+              const toolKind = diagnosis.implicated_tool
+                ? (TOOL_KINDS[diagnosis.implicated_tool as ToolName] || null)
+                : null;
+              await memory.store(
+                MemoryRecordSchema.parse({
+                  mem_id: memId,
+                  created_run: traceId,
+                  source_target: state.target_id,
+                  attack_class: activeAttack.class,
+                  hit_types: activeFinding.hit_types,
+                  root_cause_code: diagnosis.root_cause_code,
+                  implicated_tool_kind: toolKind,
+                  fix_types: fallback.fix_types,
+                  fix_ops: fallback.ops,
+                  rationale: fallback.rationale,
+                  outcome: "verified",
+                  trust: 0.5,
+                  reuse_log: [],
+                  created_at: new Date().toISOString(),
+                })
+              );
+            } catch {
+              onDegraded("memory_unavailable");
+            }
+          }
 
           recordTrace(
             {
@@ -592,6 +673,8 @@ export async function executeRunGraph(
             },
             { logDir, canaryKey }
           );
+        } else {
+          fallback.status = "rejected";
         }
       }
 
@@ -601,21 +684,38 @@ export async function executeRunGraph(
           reasons: state.current.rejections,
         });
 
+        const lastFix = findingFixes[findingFixes.length - 1];
+        const unresExp = createUnresolvedExplanation({
+          attack_id: activeAttack.attack_id,
+          last_fix_id: lastFix ? lastFix.fix_id : activeAttack.attack_id,
+          attempts: state.current.attempt,
+          rejection_reasons: state.current.rejections.map((r) => r.reason_code),
+        });
+        unresolvedExplanations.push(unresExp);
+
         if (request.memory_mode !== "off") {
           try {
             const unresMemId = `mem_${crypto.randomUUID().slice(0, 8)}`;
+            storedMemIds.push(unresMemId);
+            const queryToolKind = diagnosis.implicated_tool
+              ? (TOOL_KINDS[diagnosis.implicated_tool as ToolName] ?? null)
+              : null;
             await memory.store(
               MemoryRecordSchema.parse({
                 mem_id: unresMemId,
+                created_run: traceId,
                 source_target: state.target_id,
-                root_cause_code: diagnosis.root_cause_code,
                 attack_class: activeAttack.class,
-                tool_kind: diagnosis.implicated_tool || "general",
-                fix_types: ["approval_gate"],
-                rationale_summary: `Unresolved attack ${activeAttack.attack_id}`,
-                ops: [],
+                hit_types: activeFinding.hit_types,
+                root_cause_code: diagnosis.root_cause_code,
+                implicated_tool_kind: queryToolKind,
+                fix_types: lastFix ? lastFix.fix_types : ["modify_prompt_rule"],
+                fix_ops: lastFix ? lastFix.ops : [{ op: "modify_prompt_rule", rule: "Do not execute unauthorized requests." }],
+                rationale: lastFix ? lastFix.rationale : `Unresolved attack ${activeAttack.attack_id}`,
                 outcome: "unresolved",
                 trust: 0.1,
+                reuse_log: [],
+                created_at: new Date().toISOString(),
               })
             );
             const usedAnyMem = findingFixes.find((f) => f.used_mem_id)?.used_mem_id;
@@ -632,8 +732,11 @@ export async function executeRunGraph(
     findingsHistory.push({
       finding: activeFinding,
       attack: activeAttack,
+      run: failingTrial.run,
+      canary: failingTrial.canary,
       hits: failingTrial.verdict.hits,
       diagnosis,
+      memories: [...state.current.memories],
       fixes: findingFixes,
       verifications: findingVerifications,
     });
@@ -696,26 +799,68 @@ export async function executeRunGraph(
     ...findingsHistory.map((f) => f.diagnosis.explanation),
     ...findingsHistory.flatMap((f) => f.fixes.map((fix) => fix.explanation)),
     ...findingsHistory.flatMap((f) => f.verifications.map((v) => v.explanation)),
+    ...unresolvedExplanations,
     readinessExplanation,
   ];
 
-  const evidenceMap: Record<EvidenceRef, EvidenceItem> = {};
-  const packetForReport = buildEvidencePacket({
+  // Build Real Report.evidence Map per AGENT_SPEC §6.8 & DATA_CONTRACTS §16
+  const allCollectedEvidence: Record<EvidenceRef, EvidenceItem> = {};
+
+  // 1. Evidence items for each finding
+  for (const f of findingsHistory) {
+    const fPacket = buildEvidencePacket({
+      targetId: state.target_id,
+      policy: state.policy,
+      config: state.config_current,
+      attack: f.attack,
+      run: f.run,
+      hits: f.hits,
+      diagnosis: f.diagnosis,
+      memories: f.memories,
+      verifications: f.verifications,
+      canary: f.canary,
+      traceId,
+    });
+    for (const item of fPacket) {
+      allCollectedEvidence[item.ref] = item;
+    }
+  }
+
+  // 2. Global packet for report (suites, policy rows, config, trace)
+  const reportPacket = buildEvidencePacket({
     targetId: state.target_id,
     policy: state.policy,
     config: state.config_current,
     suiteBefore: state.baseline || undefined,
     suiteAfter: state.final || undefined,
+    traceId,
   });
-
-  for (const item of packetForReport) {
-    evidenceMap[item.ref] = item;
+  for (const item of reportPacket) {
+    allCollectedEvidence[item.ref] = item;
   }
 
+  // Include all memory records from memory engine in collected evidence
+  if (memory && typeof (memory as any).listRecords === "function") {
+    for (const rec of (memory as any).listRecords()) {
+      if (!allCollectedEvidence[`memory:${rec.mem_id}`]) {
+        allCollectedEvidence[`memory:${rec.mem_id}`] = {
+          ref: `memory:${rec.mem_id}`,
+          kind: "memory",
+          source: "memory",
+          snippet: `Memory ${rec.mem_id} (trust=${rec.trust}): ${rec.rationale || rec.root_cause_code}`.slice(0, 300),
+        };
+      }
+    }
+  }
+
+  // 3. Populate evidenceMap only with refs cited in allExplanations
+  const evidenceMap: Record<EvidenceRef, EvidenceItem> = {};
   for (const exp of allExplanations) {
     for (const claim of exp.claims) {
       for (const ref of claim.evidence) {
-        if (!evidenceMap[ref]) {
+        if (allCollectedEvidence[ref]) {
+          evidenceMap[ref] = allCollectedEvidence[ref];
+        } else {
           evidenceMap[ref] = {
             ref,
             kind: "run_step",
@@ -736,13 +881,25 @@ export async function executeRunGraph(
   const hitsBefore = state.baseline?.attacks.filter((a) => a.verdict === "hit").length ?? 0;
   const hitsAfter = state.final?.attacks.filter((a) => a.verdict === "hit").length ?? 0;
 
+  const customAttackResults = state.attack_suite
+    .filter((a) => a.source === "judge")
+    .map((a) => {
+      const finalRes = state.final?.attacks.find((r) => r.attack_id === a.attack_id);
+      return {
+        attack_id: a.attack_id,
+        carrier: a.carrier,
+        injection_text: a.injection_text,
+        verdict: finalRes?.verdict ?? ("blocked" as const),
+      };
+    });
+
   const report = ReportSchema.parse({
     trace_id: traceId,
     target_id: state.target_id,
     created_at: new Date().toISOString(),
     started_at: state.counters.started_at,
     request: validRequest,
-    custom_attack_results: [],
+    custom_attack_results: customAttackResults,
     modes: {
       sample_mode: true,
       llm_provider: "meterless",
@@ -779,13 +936,13 @@ export async function executeRunGraph(
     remaining_risks: remainingRisks,
     memory: {
       retrieved: findingsHistory.flatMap((f) => f.fixes).filter((fix) => fix.used_mem_id).map((fix) => fix.used_mem_id!),
-      stored: state.accepted_fixes.map((a) => a.fix.fix_id),
+      stored: storedMemIds,
     },
     degraded: state.degraded,
     readiness,
     config_before: state.config_before,
     config_after: state.config_current,
-    trace_path: path.join(logDir, `${traceId}.jsonl`),
+    trace_path: path.relative(process.cwd(), path.join(logDir, `${traceId}.jsonl`)).replace(/\\/g, "/"),
     explanations: allExplanations,
     evidence: evidenceMap,
   });

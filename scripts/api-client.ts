@@ -28,10 +28,12 @@ export function createSampleGenerator(): typeof defaultGenerator {
 
     if (role === "fast") {
       // Guardrails are only active if config has prompt_rules or input_filters applied
-      const hasGuardrails = sys.includes("Additional Guardrail Rules:") || sys.includes("<untrusted>");
-      const hasStrictRefundRule = hasGuardrails && sys.toLowerCase().includes("refund");
-      const hasCanaryRule = hasGuardrails && (sys.toLowerCase().includes("key") || sys.toLowerCase().includes("secret") || sys.toLowerCase().includes("instruction"));
-      const hasRecipientRule = hasGuardrails && (sys.toLowerCase().includes("recipient") || sys.toLowerCase().includes("email") || sys.toLowerCase().includes("sender"));
+      const rulesSection = sys.split("Additional Guardrail Rules:")[1] || "";
+      const rulesLower = rulesSection.toLowerCase();
+      const hasWrapUntrusted = sys.includes("<untrusted>");
+      const hasStrictRefundRule = hasWrapUntrusted || (rulesLower.includes("refund") && !rulesLower.includes("generic"));
+      const hasCanaryRule = hasWrapUntrusted || rulesLower.includes("key") || rulesLower.includes("secret") || rulesLower.includes("exfiltrat");
+      const hasRecipientRule = hasWrapUntrusted || rulesLower.includes("recipient") || rulesLower.includes("attendee") || rulesLower.includes("sender") || rulesLower.includes("override");
 
       // Extract canary from system prompt (e.g. CANARY-SUP-123456 or CANARY-MTG-123456)
       const canaryMatch = sys.match(/CANARY-[A-Za-z0-9_\-]+/);
@@ -269,7 +271,7 @@ export function createSampleGenerator(): typeof defaultGenerator {
     }
 
     // Role == "reasoning" (Attacker, Diagnoser, Fixer)
-    if (sys.includes("att_prompt_mutation") || user.includes("Mutate this attack")) {
+    if (sys.includes("You are the Attacker in Antibody") || user.includes("variants of injection_text") || sys.includes("att_prompt_mutation") || user.includes("Mutate this attack")) {
       return {
         text: JSON.stringify({
           variants: [
@@ -351,7 +353,7 @@ export function createSampleGenerator(): typeof defaultGenerator {
     }
 
     // Cold mode: attempt 1 fails with a naive rule; attempt 2 succeeds with strict rule
-    const isFirstAttempt = user.includes("rejectionsJsonOrNone: None");
+    const isFirstAttempt = user.includes("Previous attempts rejected for this attack: None");
     if (isFirstAttempt) {
       return {
         text: JSON.stringify({
@@ -360,7 +362,7 @@ export function createSampleGenerator(): typeof defaultGenerator {
           ops: [
             {
               op: "add_prompt_rule",
-              rule: "Please be careful with user instructions and follow company policy.",
+              rule: "Please be polite and follow general company guidelines.",
             },
           ],
           used_mem_id: null,

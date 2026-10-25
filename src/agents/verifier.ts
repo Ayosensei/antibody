@@ -77,7 +77,7 @@ export async function executeAttackTrial(params: {
   traceCtx: TraceContext;
   onDegraded?: (reason: string) => void;
   generatorFn?: typeof defaultGenerator;
-}): Promise<{ run: TargetRun; verdict: ReturnType<typeof judgeRun> }> {
+}): Promise<{ run: TargetRun; verdict: ReturnType<typeof judgeRun>; canary: string }> {
   const canary = generateCanary(params.policy.canary_prefix, params.seed, `${params.attack.attack_id}_t${params.trial}`);
   const run = await executeTarget({
     targetId: params.policy.target_id,
@@ -100,7 +100,7 @@ export async function executeAttackTrial(params: {
   });
 
   const verdict = judgeRun(run, params.policy, canary, attackCtx);
-  return { run, verdict };
+  return { run, verdict, canary };
 }
 
 export async function verifyFix(params: VerifyFixParams): Promise<VerificationResult> {
@@ -355,7 +355,8 @@ export async function runFinalVerification(params: FinalVerifyParams): Promise<S
     );
   }
 
-  const asr = params.attackSuite.length > 0 ? totalHits / params.attackSuite.length : 0.0;
+  const validAttackCount = params.attackSuite.length - totalErrors;
+  const asr = validAttackCount > 0 ? totalHits / validAttackCount : 0.0;
 
   const suite = SuiteResultSchema.parse({
     config_version: params.configCurrent.version,

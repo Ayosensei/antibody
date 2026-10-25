@@ -34,6 +34,7 @@ export interface BuildEvidencePacketParams {
   diagnosis?: Diagnosis;
   memories?: MemoryRecord[];
   rejectedVerifications?: VerificationResult[];
+  verifications?: VerificationResult[];
   priorFixes?: Fix[];
   suiteBefore?: SuiteResult;
   suiteAfter?: SuiteResult;
@@ -239,15 +240,17 @@ export function buildEvidencePacket(params: BuildEvidencePacketParams): Evidence
     }
   }
 
-  // 8. Rejected verification attempts
-  if (params.rejectedVerifications) {
-    for (const v of params.rejectedVerifications) {
+  // 8. Verification items
+  const verifItems = params.verifications || params.rejectedVerifications;
+  if (verifItems) {
+    for (const v of verifItems) {
+      const reasonsPart = v.reasons && v.reasons.length > 0 ? `, reasons=${v.reasons.map((r) => r.reason_code).join(", ")}` : "";
       items.push({
         ref: `verify:${v.fix_id}`,
         kind: "verification",
         source: "verifier",
         snippet: sanitizeSnippet(
-          `Verification for ${v.fix_id}: verdict=${v.verdict}, reasons=${v.reasons.map((r) => r.reason_code).join(", ")}`,
+          `Verification for ${v.fix_id}: verdict=${v.verdict}${reasonsPart}`,
           canary
         ),
       });

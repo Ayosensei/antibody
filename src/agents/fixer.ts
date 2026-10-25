@@ -25,6 +25,7 @@ import {
   type TargetConfig,
   type TraceContext,
   type Diagnosis,
+  type VerificationResult,
 } from "../schemas.js";
 import { generator } from "../adapters/llm/index.js";
 import { recordTrace } from "../tracing.js";
@@ -79,7 +80,7 @@ export function applyFixOps(
 
       case "add_input_filter":
         nextConfig.input_filters.push({
-          filter_id: `filter_${nextConfig.input_filters.length + 1}`,
+          filter_id: `flt_${String(nextConfig.input_filters.length + 1).padStart(3, "0")}`,
           ...op.filter,
         });
         break;
@@ -96,6 +97,7 @@ export interface ProposeFixParams {
   policy: Policy;
   memories?: MemoryRecord[];
   rejections?: Rejection[];
+  rejectedVerifications?: VerificationResult[];
   regressionTasks?: RegressionTask[];
   attempt?: number;
   canary: string;
@@ -187,6 +189,7 @@ export async function proposeFix(params: ProposeFixParams): Promise<Fix> {
     policy: params.policy,
     policySource: params.policySource,
     memories: params.memories,
+    rejectedVerifications: params.rejectedVerifications,
     targetId: params.policy.target_id,
   });
 
