@@ -43,9 +43,20 @@ function runSecretScan() {
     "scripts/secret-scan.ts",
   ];
 
+  const binaryExtensions = [
+    ".png", ".jpg", ".jpeg", ".gif", ".webp",
+    ".mp4", ".mov", ".avi", ".webm",
+    ".pdf", ".ico", ".woff", ".woff2", ".ttf", ".eot",
+    ".zip", ".tar", ".gz"
+  ];
+
   let contentViolations = 0;
   for (const file of files) {
     if (ignoredFiles.some((ign) => file === ign || file.endsWith(ign))) {
+      continue;
+    }
+    // Skip binary media, documents, and archives
+    if (binaryExtensions.some((ext) => file.toLowerCase().endsWith(ext))) {
       continue;
     }
     const fullPath = path.resolve(process.cwd(), file);
@@ -58,15 +69,18 @@ function runSecretScan() {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       if (secretRegex.test(line)) {
+        // Allow empty assignments or documentation placeholders (e.g., METERLESS_RUNTIME_TOKEN= or <...>)
+        const emptyEnvMatch = line.match(/^\s*(METERLESS_RUNTIME_TOKEN|NVIDIA_API_KEY|ZETARIS_API_KEY)\s*=\s*(<.*>|\s*(#.*)?)$/i);
+        if (emptyEnvMatch) {
+          continue;
+        }
+
         // Exclude placeholder, test doubles, mock values, or canary masking
         if (
           line.includes("example") ||
           line.includes("placeholder") ||
           line.includes("test_secret") ||
           line.includes("test_key") ||
-          line.includes("METERLESS_RUNTIME_TOKEN=") ||
-          line.includes("NVIDIA_API_KEY=") ||
-          line.includes("ZETARIS_API_KEY=") ||
           line.includes("test-token") ||
           line.includes("super_secret") ||
           line.includes("SECRET_TOKEN") ||

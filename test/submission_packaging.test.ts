@@ -74,6 +74,7 @@ describe("Task T-D11: Evidence and Submission Packaging", () => {
     expect(outFiles.length).toBeGreaterThanOrEqual(3);
 
     const targetsRepresented = new Set<string>();
+    let foundRejectedFix = false;
 
     for (const inFile of inFiles) {
       expect(outFiles).toContain(inFile);
@@ -91,14 +92,35 @@ describe("Task T-D11: Evidence and Submission Packaging", () => {
       // Verify matching target
       expect(inJson.target).toBe(outJson.target_id);
       targetsRepresented.add(inJson.target);
+
+      // SM-9: 100% of evidence refs in saved explanations resolve to real items
+      const evidenceMap = outJson.evidence || {};
+      for (const exp of (outJson.explanations || [])) {
+        for (const claim of (exp.claims || [])) {
+          for (const ref of (claim.evidence || [])) {
+            expect(
+              evidenceMap[ref],
+              `Unresolved evidence ref '${ref}' in ${inFile}`
+            ).toBeDefined();
+          }
+        }
+      }
+
+      // Check if this report demonstrates a rejected fix (SM-5 & DEMO_AND_SUBMISSION.md §1.1)
+      if (outJson.metrics?.fixes_rejected > 0) {
+        foundRejectedFix = true;
+      }
     }
 
     // Both targets must be represented
     expect(targetsRepresented.has("support_triage")).toBe(true);
     expect(targetsRepresented.has("meeting_tasks")).toBe(true);
+
+    // SM-5: At least one saved report must demonstrate the Verifier -> Fixer rejection loop
+    expect(foundRejectedFix).toBe(true);
   });
 
-  it("AGENTS.md Hard Rule 4: production code in src/ NEVER imports output_examples or input_examples", () => {
+  it("AGENTS.md Hard Rule 4: production code in src/ NEVER references output_examples or input_examples", () => {
     const srcDir = path.resolve(process.cwd(), "src");
     const checkDir = (dir: string) => {
       const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -108,10 +130,8 @@ describe("Task T-D11: Evidence and Submission Packaging", () => {
           checkDir(fullPath);
         } else if (entry.isFile() && (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx"))) {
           const content = fs.readFileSync(fullPath, "utf-8");
-          expect(content).not.toMatch(/from\s+['"].*output_examples/);
-          expect(content).not.toMatch(/from\s+['"].*input_examples/);
-          expect(content).not.toMatch(/require\(['"].*output_examples/);
-          expect(content).not.toMatch(/require\(['"].*input_examples/);
+          expect(content).not.toContain("output_examples");
+          expect(content).not.toContain("input_examples");
         }
       }
     };
